@@ -59,7 +59,7 @@ curl http://localhost:35373/api/now-playing
 
  "status": "success",
 
- "action": "play\_pause\_toggled",
+ "action": "play_pause_toggled",
 
  "isPlaying": false,
 
@@ -103,7 +103,7 @@ curl http://localhost:35373/api/play-pause
 
  "status": "success",
 
- "action": "next\_track",
+ "action": "next_track",
 
  "newTrack": "Next Song Title",
 
@@ -147,7 +147,7 @@ curl http://localhost:35373/api/next-track
 
  "status": "success",
 
- "action": "previous\_track",
+ "action": "previous_track",
 
  "newTrack": "Previous Song Title",
 
@@ -191,7 +191,7 @@ curl http://localhost:35373/api/previous-track
 
  "status": "success",
 
- "action": "volume\_up",
+ "action": "volume_up",
 
  "currentVolume": 0.9,
 
@@ -235,7 +235,7 @@ curl http://localhost:35373/api/volume/up
 
  "status": "success",
 
- "action": "volume\_down",
+ "action": "volume_down",
 
  "currentVolume": 0.7,
 
@@ -279,7 +279,7 @@ curl http://localhost:35373/api/volume/down
 
  "status": "success",
 
- "action": "mute\_toggle",
+ "action": "mute_toggle",
 
  "isMuted": true,
 
