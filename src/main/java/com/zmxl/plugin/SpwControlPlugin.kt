@@ -3,7 +3,7 @@ package com.zmxl.plugin
 import org.pf4j.Plugin
 import org.pf4j.PluginWrapper
 import com.zmxl.plugin.server.HttpServer
-import com.zmxl.plugin.control.SmtcController  // 添加正确导入
+import com.zmxl.plugin.control.SmtcController  
 
 class SpwControlPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
     private lateinit var httpServer: HttpServer
@@ -12,14 +12,14 @@ class SpwControlPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
         super.start()
         httpServer = HttpServer(35373)
         httpServer.start()
-        SmtcController.init()  // 确保正确引用
+        SmtcController.init()  
         println("SPW Control Plugin started with HTTP server on port 35373")
     }
 
     override fun stop() {
         super.stop()
         httpServer.stop()
-        SmtcController.shutdown()  // 确保正确引用
+        SmtcController.shutdown()  
         println("SPW Control Plugin stopped")
     }
 }
