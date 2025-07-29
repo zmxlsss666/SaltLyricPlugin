@@ -1,6 +1,6 @@
 # SaltApiPlugin
 
-一个适应于Salt Player For Windows的插件，通过http进行简易的音乐控制，默认端口为35373
+一个适用于Salt Player For Windows的插件，通过http进行简易的音乐控制，默认端口为35373
 
 ### 1. 获取当前播放信息
 
