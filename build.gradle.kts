@@ -13,7 +13,7 @@ kotlin {
     jvmToolchain(21)
 }
 
-// 移除所有 repositories 块（已在 settings.gradle.kts 中配置）
+
 
 dependencies {
     // SPW API
