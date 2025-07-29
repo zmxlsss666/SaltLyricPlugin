@@ -1,0 +1,20 @@
+[versions]
+kotlin = "2.0.21"
+spw-workshop-api = "0.1.0-dev05"
+spark = "2.9.4"
+jna = "5.14.0"
+gson = "2.10.1"
+slf4j = "2.0.9"
+
+[libraries]
+spw-workshop-api = { group = "com.github.Moriafly", name = "spw-workshop-api", version.ref = "spw-workshop-api" }
+spark-core = { group = "com.sparkjava", name = "spark-core", version.ref = "spark" }
+jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
+jna-platform = { group = "net.java.dev.jna", name = "jna-platform", version.ref = "jna" }
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
+slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version.ref = "slf4j" }
+
+[plugins]
+jetbrainsKotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+jetbrainsKotlinKapt = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
