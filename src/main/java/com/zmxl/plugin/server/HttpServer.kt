@@ -11,7 +11,9 @@ import jakarta.servlet.http.HttpServlet
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import java.io.IOException
+import java.io.InputStreamReader
 import java.io.PrintWriter
+import java.nio.charset.StandardCharsets
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -26,6 +28,9 @@ class HttpServer(private val port: Int) {
         val context = ServletContextHandler(ServletContextHandler.SESSIONS)
         context.contextPath = "/"
         server.handler = context
+
+        // 注册根路径路由（返回控制界面HTML）
+        context.addServlet(HomeServlet::class.java, "/")
 
         // 注册默认Servlet处理静态资源
         val defaultHolder = ServletHolder("default", DefaultServlet::class.java)
@@ -61,6 +66,40 @@ class HttpServer(private val port: Int) {
         } catch (e: Exception) {
             println("HTTP服务器停止失败: ${e.message}")
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * 根路径路由处理，返回控制界面HTML
+     */
+    class HomeServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "text/html;charset=UTF-8"
+            resp.characterEncoding = "UTF-8"
+            
+            // 从类路径资源加载HTML文件
+            val htmlContent = loadHtmlResource("/index.html")
+            if (htmlContent != null) {
+                resp.writer.write(htmlContent)
+            } else {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write("404 - 控制界面未找到")
+            }
+        }
+
+        private fun loadHtmlResource(path: String): String? {
+            return try {
+                val inputStream = this.javaClass.getResourceAsStream(path)
+                if (inputStream != null) {
+                    InputStreamReader(inputStream, StandardCharsets.UTF_8).use { it.readText() }
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                println("加载HTML资源失败: ${e.message}")
+                null
+            }
         }
     }
 
