@@ -97,10 +97,13 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
     override fun onStateChanged(state: State) {
         PlaybackStateHolder.currentState = state
         
+        // 打印状态值以帮助调试
+        println("播放状态变化: ${state.name}")
+        
         // 根据播放状态更新进度计时器
-        when (state) {
-            State.Playing -> PlaybackStateHolder.startPositionUpdate()
-            State.Paused, State.Stopped -> PlaybackStateHolder.stopPositionUpdate()
+        when (state.name) {
+            "Playing" -> PlaybackStateHolder.startPositionUpdate()
+            "Paused", "Stopped" -> PlaybackStateHolder.stopPositionUpdate()
             else -> {}
         }
     }
