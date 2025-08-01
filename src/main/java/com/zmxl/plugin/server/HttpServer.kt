@@ -365,7 +365,7 @@ class HttpServer(private val port: Int) {
                 "album" to PlaybackStateHolder.currentMedia?.album,
                 "isPlaying" to PlaybackStateHolder.isPlaying,
                 "position" to PlaybackStateHolder.currentPosition,
-                "volume" to PlaybackStateHolder.volume,
+                "volume" to PlaybackStateHolder.volume, // 返回0-100整数音量
                 "timestamp" to System.currentTimeMillis()
             )
             
@@ -562,7 +562,7 @@ class HttpServer(private val port: Int) {
                 
                 Thread.sleep(50)
                 
-                val isMuted = PlaybackStateHolder.volume == 0.0f
+                val isMuted = PlaybackStateHolder.volume == 0
                 val response = mapOf(
                     "status" to "success",
                     "action" to "mute_toggle",
