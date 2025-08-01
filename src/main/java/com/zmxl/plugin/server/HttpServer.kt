@@ -428,7 +428,7 @@ class HttpServer(private val port: Int) {
             const seconds = Math.floor(ms / 1000);
             const minutes = Math.floor(seconds / 60);
             const remainingSeconds = seconds % 60;
-            return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+            return `\${minutes.toString().padStart(2, '0')}:\${remainingSeconds.toString().padStart(2, '0')}`;
         }
         
         // 格式化毫秒为 MM:SS:mmm（用于调试）
@@ -438,17 +438,17 @@ class HttpServer(private val port: Int) {
             const minutes = Math.floor(totalSeconds / 60);
             const seconds = Math.floor(totalSeconds % 60);
             const milliseconds = Math.floor((ms % 1000));
-            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+            return `\${minutes.toString().padStart(2, '0')}:\${seconds.toString().padStart(2, '0')}.\${milliseconds.toString().padStart(3, '0')}`;
         }
         
         // 获取当前播放信息
         async function getNowPlaying() {
             try {
-                const response = await fetch(`${API_BASE}/now-playing`);
+                const response = await fetch(`\${API_BASE}/now-playing`);
                 if (!response.ok) throw new Error('网络响应不正常');
                 return await response.json();
             } catch (error) {
-                showError(`无法获取当前播放信息: ${error.message}`);
+                showError(`无法获取当前播放信息: \${error.message}`);
                 return null;
             }
         }
@@ -456,7 +456,7 @@ class HttpServer(private val port: Int) {
         // 获取歌词
         async function getLyrics() {
             try {
-                const response = await fetch(`${API_BASE}/lyric`);
+                const response = await fetch(`\${API_BASE}/lyric`);
                 if (!response.ok) throw new Error('歌词获取失败');
                 
                 const data = await response.json();
@@ -528,7 +528,7 @@ class HttpServer(private val port: Int) {
             let lyricsHTML = '';
             for (let i = Math.max(0, currentIndex - 3); i < Math.min(currentLyrics.length, currentIndex + 4); i++) {
                 const className = i === currentIndex ? 'current-lyric' : '';
-                lyricsHTML += `<p class="${className}">${currentLyrics[i].text}</p>`;
+                lyricsHTML += `<p class="\${className}">\${currentLyrics[i].text}</p>`;
             }
             
             lyricsContent.innerHTML = lyricsHTML;
@@ -564,7 +564,7 @@ class HttpServer(private val port: Int) {
                 currentPosition = data.position || 0;
                 const duration = data.duration || 300000; // 默认5分钟
                 const positionPercent = Math.min(100, (currentPosition / duration) * 100);
-                progressBar.style.width = `${positionPercent}%`;
+                progressBar.style.width = `\${positionPercent}%`;
                 
                 // 更新时间显示
                 currentTime.textContent = formatTime(currentPosition);
@@ -581,7 +581,7 @@ class HttpServer(private val port: Int) {
                 
                 // 更新时间戳
                 const now = new Date();
-                updateTime.textContent = `最后更新: ${now.toLocaleTimeString()}`;
+                updateTime.textContent = `最后更新: \${now.toLocaleTimeString()}`;
                 
                 // 更新API连接状态
                 apiStatus.textContent = "SaltPlayer API 已连接";
@@ -589,7 +589,7 @@ class HttpServer(private val port: Int) {
                 
                 loading.style.display = 'none';
             } catch (error) {
-                showError(`更新播放器失败: ${error.message}`);
+                showError(`更新播放器失败: \${error.message}`);
                 loading.style.display = 'none';
                 
                 // 更新API连接状态
@@ -602,7 +602,7 @@ class HttpServer(private val port: Int) {
         async function updateCover() {
             try {
                 // 使用相对路径获取封面
-                const coverUrl = `${API_BASE}/pic?t=${Date.now()}`; // 添加时间戳避免缓存
+                const coverUrl = `\${API_BASE}/pic?t=\${Date.now()}`; // 添加时间戳避免缓存
                 albumCover.src = coverUrl;
                 albumCover.style.display = 'block';
                 albumCover.previousElementSibling.style.display = 'none';
@@ -625,7 +625,7 @@ class HttpServer(private val port: Int) {
         // 切换播放/暂停
         async function togglePlayPause() {
             try {
-                const response = await fetch(`${API_BASE}/play-pause`);
+                const response = await fetch(`\${API_BASE}/play-pause`);
                 if (!response.ok) throw new Error('操作失败');
                 
                 const data = await response.json();
@@ -635,31 +635,31 @@ class HttpServer(private val port: Int) {
                     playBtnIcon.className = 'fas fa-play';
                 }
             } catch (error) {
-                showError(`播放/暂停操作失败: ${error.message}`);
+                showError(`播放/暂停操作失败: \${error.message}`);
             }
         }
         
         // 上一曲
         async function prevTrack() {
             try {
-                await fetch(`${API_BASE}/previous-track`);
+                await fetch(`\${API_BASE}/previous-track`);
                 // 重置歌词
                 currentLyrics = [];
                 await updatePlayer();
             } catch (error) {
-                showError(`上一曲操作失败: ${error.message}`);
+                showError(`上一曲操作失败: \${error.message}`);
             }
         }
         
         // 下一曲
         async function nextTrack() {
             try {
-                await fetch(`${API_BASE}/next-track`);
+                await fetch(`\${API_BASE}/next-track`);
                 // 重置歌词
                 currentLyrics = [];
                 await updatePlayer();
             } catch (error) {
-                showError(`下一曲操作失败: ${error.message}`);
+                showError(`下一曲操作失败: \${error.message}`);
             }
         }
         
@@ -681,7 +681,7 @@ class HttpServer(private val port: Int) {
         // 增加音量
         async function volumeUp() {
             try {
-                await fetch(`${API_BASE}/volume/up`);
+                await fetch(`\${API_BASE}/volume/up`);
                 
                 // 模拟音量变化
                 const currentVolume = parseInt(volumeSlider.value);
@@ -695,14 +695,14 @@ class HttpServer(private val port: Int) {
                     muteBtnIcon.className = 'fas fa-volume-up';
                 }
             } catch (error) {
-                showError(`音量增加失败: ${error.message}`);
+                showError(`音量增加失败: \${error.message}`);
             }
         }
         
         // 减少音量
         async function volumeDown() {
             try {
-                await fetch(`${API_BASE}/volume/down`);
+                await fetch(`\${API_BASE}/volume/down`);
                 
                 // 模拟音量变化
                 const currentVolume = parseInt(volumeSlider.value);
@@ -716,7 +716,7 @@ class HttpServer(private val port: Int) {
                     muteBtnIcon.className = 'fas fa-volume-up';
                 }
             } catch (error) {
-                showError(`音量减少失败: ${error.message}`);
+                showError(`音量减少失败: \${error.message}`);
             }
         }
         
