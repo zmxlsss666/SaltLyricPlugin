@@ -1,13 +1,81 @@
+package com.zmxl.plugin.server
+
+import com.google.gson.Gson
+import com.sun.jna.Native
+import com.sun.jna.platform.win32.User32
+import com.zmxl.plugin.control.SmtcController
+import com.zmxl.plugin.playback.PlaybackStateHolder
+import org.eclipse.jetty.server.Server
+import org.eclipse.jetty.servlet.*
+import jakarta.servlet.http.HttpServlet
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletResponse
+import java.io.IOException
+import java.io.PrintWriter
+
+class HttpServer(private val port: Int) {
+    private lateinit var server: Server
+
+    init {
+        SmtcController.init()
+    }
+
+    fun start() {
+        server = Server(port)
+        val context = ServletContextHandler(ServletContextHandler.SESSIONS)
+        context.contextPath = "/"
+        server.handler = context
+
+        // 添加根路径处理
+        context.addServlet(HomeServlet::class.java, "/")
+        
+        // 注册默认Servlet处理静态资源
+        val defaultHolder = ServletHolder("default", DefaultServlet::class.java)
+        defaultHolder.setInitParameter("dirAllowed", "false")
+        context.addServlet(defaultHolder, "/*")
+        
+        // 将HttpServer实例存入ServletContext
+        context.setAttribute("httpServer", this)
+
+        // 注册API端点
+        context.addServlet(NowPlayingServlet::class.java, "/api/now-playing")
+        context.addServlet(PlayPauseServlet::class.java, "/api/play-pause")
+        context.addServlet(NextTrackServlet::class.java, "/api/next-track")
+        context.addServlet(PreviousTrackServlet::class.java, "/api/previous-track")
+        context.addServlet(VolumeUpServlet::class.java, "/api/volume/up")
+        context.addServlet(VolumeDownServlet::class.java, "/api/volume/down")
+        context.addServlet(MuteServlet::class.java, "/api/mute")
+
+        try {
+            server.start()
+            println("HTTP服务器已启动，端口: $port")
+        } catch (e: Exception) {
+            println("HTTP服务器启动失败: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
+    fun stop() {
+        try {
+            server.stop()
+            SmtcController.shutdown()
+            println("HTTP服务器已停止")
+        } catch (e: Exception) {
+            println("HTTP服务器停止失败: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
     /**
-     * 实际控制页面
+     * 根路径路由处理
      */
-    class ControlServlet : HttpServlet() {
+    class HomeServlet : HttpServlet() {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "text/html;charset=UTF-8"
             resp.characterEncoding = "UTF-8"
             
-            // 返回控制界面HTML内容
+            // 返回简单的控制界面HTML
             resp.writer.write("""
             <!DOCTYPE html>
             <html lang="zh-CN">
@@ -16,59 +84,49 @@
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Salt Player 控制器</title>
                 <style>
-                    /* 完整样式实现 */
-                    :root {
-                        --primary: #3B82F6;
-                        --secondary: #10B981;
-                        --dark: #1E293B;
-                        --light: #F8FAFC;
-                        --accent: #8B5CF6;
-                    }
-                    
                     body {
-                        background: linear-gradient(to bottom right, var(--dark), #0f172a);
-                        color: var(--light);
-                        font-family: 'Segoe UI', system-ui, sans-serif;
-                        min-height: 100vh;
+                        font-family: Arial, sans-serif;
+                        background: #1e293b;
+                        color: white;
                         margin: 0;
                         padding: 20px;
                         display: flex;
                         flex-direction: column;
                         align-items: center;
                         justify-content: center;
+                        min-height: 100vh;
                     }
                     
-                    .control-container {
+                    .container {
                         background: rgba(255, 255, 255, 0.1);
-                        backdrop-filter: blur(10px);
-                        border-radius: 16px;
-                        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-                        border: 1px solid rgba(255, 255, 255, 0.2);
+                        border-radius: 10px;
+                        padding: 20px;
+                        max-width: 400px;
                         width: 100%;
-                        max-width: 500px;
-                        padding: 30px;
-                        box-sizing: border-box;
+                        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                        text-align: center;
                     }
                     
-                    .status-container {
+                    .status {
                         display: flex;
                         align-items: center;
+                        justify-content: center;
                         margin-bottom: 20px;
                     }
                     
-                    .status-indicator {
-                        width: 12px;
-                        height: 12px;
+                    .status-dot {
+                        width: 10px;
+                        height: 10px;
                         border-radius: 50%;
                         margin-right: 10px;
                     }
                     
-                    .status-connected {
-                        background-color: #10B981;
+                    .connected {
+                        background: #10B981;
                     }
                     
-                    .status-disconnected {
-                        background-color: #EF4444;
+                    .disconnected {
+                        background: #EF4444;
                         animation: pulse 1.5s infinite;
                     }
                     
@@ -79,17 +137,13 @@
                     }
                     
                     .track-info {
-                        text-align: center;
-                        margin-bottom: 30px;
+                        margin-bottom: 20px;
                     }
                     
                     .track-title {
                         font-size: 24px;
                         font-weight: bold;
                         margin-bottom: 5px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
                     }
                     
                     .track-artist {
@@ -100,66 +154,42 @@
                     .controls {
                         display: flex;
                         justify-content: space-between;
-                        margin-bottom: 30px;
+                        margin-bottom: 20px;
                     }
                     
-                    .control-btn {
-                        background: none;
+                    button {
+                        background: #3B82F6;
+                        color: white;
                         border: none;
-                        color: var(--light);
-                        font-size: 24px;
+                        border-radius: 5px;
+                        padding: 10px 15px;
                         cursor: pointer;
-                        width: 60px;
-                        height: 60px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        border-radius: 50%;
-                        transition: all 0.2s;
+                        font-size: 16px;
                     }
                     
-                    .control-btn:hover {
-                        background: rgba(255, 255, 255, 0.1);
-                        transform: scale(1.1);
+                    .play-pause {
+                        background: #10B981;
+                        font-weight: bold;
                     }
                     
-                    .control-btn:active {
-                        transform: scale(0.95);
-                    }
-                    
-                    .play-pause-btn {
-                        background-color: var(--primary);
-                        width: 80px;
-                        height: 80px;
-                        box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3);
-                    }
-                    
-                    .volume-controls {
-                        display: flex;
-                        justify-content: center;
-                        gap: 20px;
-                    }
-                    
-                    .status-message {
-                        text-align: center;
+                    .message {
                         margin-top: 20px;
-                        min-height: 24px;
-                        transition: opacity 0.3s;
+                        min-height: 20px;
                     }
                     
-                    .message-success {
+                    .success {
                         color: #10B981;
                     }
                     
-                    .message-error {
+                    .error {
                         color: #EF4444;
                     }
                 </style>
             </head>
             <body>
-                <div class="control-container">
-                    <div class="status-container">
-                        <div id="status-indicator" class="status-indicator status-disconnected"></div>
+                <div class="container">
+                    <div class="status">
+                        <div id="status-dot" class="status-dot disconnected"></div>
                         <span id="status-text">未连接到API</span>
                     </div>
                     
@@ -169,34 +199,403 @@
                     </div>
                     
                     <div class="controls">
-                        <button id="prev-btn" class="control-btn">
-                            <svg width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
-                                <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm3.5 7.5a.5.5 0 0 1 0 1H11v2.5a.5.5 0 0 1-1 0V8.5H8v3a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0v3h2V4.5a.5.5 0 0 1 1 0V7h.5z"/>
-                            </svg>
-                        </button>
-                        
-                        <button id="play-pause-btn" class="control-btn play-pause-btn">
-                            <svg id="play-icon" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
-                                <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM7 11.5V4.5a.5.5 0 0 1 .757-.429l5 3.5a.5.5 0 0 1 0 .858l-5 3.5A.5.5 0 0 1 7 11.5z"/>
-                            </svg>
-                            <svg id="pause-icon" width="32" height="32" fill="currentColor" viewBox="0 0 16 16" style="display:none;">
-                                <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM6 11.5a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-7a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v7zm4 0a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-7a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v7z"/>
-                            </svg>
-                        </button>
-                        
-                        <button id="next-btn" class="control-btn">
-                            <svg width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
-                                <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 1 0-1H5v-2a.5.5 0 0 1 1 0v2h.5a.5.5 0 0 1 0 1H6v3.5a.5.5 0 0 1-1 0V7.5h-.5zm7 0a.5.5 0 0 1 0 1H11v3.5a.5.5 0 0 1-1 0V8.5H8v3a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0v3h2V7.5h.5z"/>
-                            </svg>
-                        </button>
+                        <button id="prev-btn">上一曲</button>
+                        <button id="play-pause-btn" class="play-pause">播放/暂停</button>
+                        <button id="next-btn">下一曲</button>
                     </div>
                     
-                    <div class="volume-controls">
-                        <button id="volume-down-btn" class="control-btn">
-                            <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
-                                <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM5 8a1 1 0 1 1 2 0 1 1 0 0 1-2 0zm6-1a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM4.5 6h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1zm0 3h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1z"/>
-                            </svg>
-                        </button>
+                    <div class="controls">
+                        <button id="volume-down-btn">音量-</button>
+                        <button id="mute-btn">静音</button>
+                        <button id="volume-up-btn">音量+</button>
+                    </div>
+                    
+                    <div id="message" class="message"></div>
+                </div>
+                
+                <script>
+                    const API_BASE = window.location.origin + '/api';
+                    let isPlaying = false;
+                    let isMuted = false;
+                    
+                    // 更新连接状态
+                    function updateConnectionStatus(connected) {
+                        const statusDot = document.getElementById('status-dot');
+                        const statusText = document.getElementById('status-text');
                         
-                        <button id="mute-btn" class="control-btn">
-                            <svg id="mute-icon" width="20" height="20" fill="currentColor" viewBox="0 极
+                        if (connected) {
+                            statusDot.className = 'status-dot connected';
+                            statusText.textContent = '已连接到API';
+                        } else {
+                            statusDot.className = 'status-dot disconnected';
+                            statusText.textContent = '未连接到API';
+                        }
+                    }
+                    
+                    // 更新播放信息
+                    function updateNowPlaying(data) {
+                        document.getElementById('track-title').textContent = data.title || '未知标题';
+                        document.getElementById('track-artist').textContent = data.artist || '未知艺术家';
+                        
+                        isPlaying = data.isPlaying;
+                        document.getElementById('play-pause-btn').textContent = isPlaying ? '暂停' : '播放';
+                    }
+                    
+                    // 显示消息
+                    function showMessage(message, isError) {
+                        const messageEl = document.getElementById('message');
+                        messageEl.textContent = message;
+                        messageEl.className = isError ? 'message error' : 'message success';
+                        
+                        setTimeout(() => {
+                            messageEl.textContent = '';
+                        }, 3000);
+                    }
+                    
+                    // API请求
+                    async function apiRequest(endpoint) {
+                        try {
+                            const response = await fetch(API_BASE + endpoint);
+                            if (!response.ok) {
+                                throw new Error('请求失败: ' + response.status);
+                            }
+                            return await response.json();
+                        } catch (error) {
+                            showMessage(error.message, true);
+                            updateConnectionStatus(false);
+                            return null;
+                        }
+                    }
+                    
+                    // 获取当前播放信息
+                    async function fetchNowPlaying() {
+                        const data = await apiRequest('/now-playing');
+                        if (data) {
+                            updateConnectionStatus(true);
+                            updateNowPlaying(data);
+                        }
+                    }
+                    
+                    // 播放/暂停
+                    async function togglePlayPause() {
+                        const data = await apiRequest('/play-pause');
+                        if (data) {
+                            updateNowPlaying(data);
+                            showMessage(data.message);
+                        }
+                    }
+                    
+                    // 下一曲
+                    async function nextTrack() {
+                        const data = await apiRequest('/next-track');
+                        if (data) {
+                            fetchNowPlaying();
+                            showMessage(data.message);
+                        }
+                    }
+                    
+                    // 上一曲
+                    async function previousTrack() {
+                        const data = await apiRequest('/previous-track');
+                        if (data) {
+                            fetchNowPlaying();
+                            showMessage(data.message);
+                        }
+                    }
+                    
+                    // 音量增加
+                    async function volumeUp() {
+                        const data = await apiRequest('/volume/up');
+                        if (data) {
+                            showMessage(data.message);
+                        }
+                    }
+                    
+                    // 音量减少
+                    async function volumeDown() {
+                        const data = await apiRequest('/volume/down');
+                        if (data) {
+                            showMessage(data.message);
+                        }
+                    }
+                    
+                    // 静音
+                    async function toggleMute() {
+                        const data = await apiRequest('/mute');
+                        if (data) {
+                            isMuted = data.isMuted;
+                            document.getElementById('mute-btn').textContent = isMuted ? '取消静音' : '静音';
+                            showMessage(data.message);
+                        }
+                    }
+                    
+                    // 初始化
+                    function init() {
+                        // 绑定按钮事件
+                        document.getElementById('play-pause-btn').addEventListener('click', togglePlayPause);
+                        document.getElementById('prev-btn').addEventListener('click', previousTrack);
+                        document.getElementById('next-btn').addEventListener('click', nextTrack);
+                        document.getElementById('volume-up-btn').addEventListener('click', volumeUp);
+                        document.getElementById('volume-down-btn').addEventListener('click', volumeDown);
+                        document.getElementById('mute-btn').addEventListener('click', toggleMute);
+                        
+                        // 初始获取播放信息
+                        fetchNowPlaying();
+                        
+                        // 每5秒刷新一次
+                        setInterval(fetchNowPlaying, 5000);
+                    }
+                    
+                    // 启动应用
+                    document.addEventListener('DOMContentLoaded', init);
+                </script>
+            </body>
+            </html>
+            """.trimIndent())
+        }
+    }
+
+    /**
+     * 获取当前播放信息API
+     */
+    class NowPlayingServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            val responseData = mapOf(
+                "status" to "success",
+                "title" to PlaybackStateHolder.currentMedia?.title,
+                "artist" to PlaybackStateHolder.currentMedia?.artist,
+                "album" to PlaybackStateHolder.currentMedia?.album,
+                "isPlaying" to PlaybackStateHolder.isPlaying,
+                "position" to PlaybackStateHolder.currentPosition,
+                "volume" to PlaybackStateHolder.volume,
+                "timestamp" to System.currentTimeMillis()
+            )
+            
+            PrintWriter(resp.writer).use { out ->
+                out.print(Gson().toJson(responseData))
+            }
+        }
+    }
+
+    /**
+     * 播放/暂停切换API
+     */
+    class PlayPauseServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            try {
+                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
+                httpServer.sendMediaKeyEvent(0xB3)
+                
+                Thread.sleep(100)
+                
+                val response = mapOf(
+                    "status" to "success",
+                    "action" to "play_pause_toggled",
+                    "isPlaying" to PlaybackStateHolder.isPlaying,
+                    "message" to if (PlaybackStateHolder.isPlaying) "已开始播放" else "已暂停"
+                )
+                resp.writer.write(Gson().toJson(response))
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "播放/暂停操作失败: ${e.message}"
+                )))
+            }
+        }
+    }
+
+    /**
+     * 下一曲API
+     */
+    class NextTrackServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            try {
+                SmtcController.handleNextTrack()
+                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
+                httpServer.sendMediaKeyEvent(0xB0)
+                
+                Thread.sleep(100)
+                
+                val newMedia = PlaybackStateHolder.currentMedia
+                val response = mapOf(
+                    "status" to "success",
+                    "action" to "next_track",
+                    "newTrack" to (newMedia?.title ?: "未知曲目"),
+                    "message" to "已切换到下一曲"
+                )
+                resp.writer.write(Gson().toJson(response))
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "下一曲操作失败: ${e.message}"
+                )))
+            }
+        }
+    }
+
+    /**
+     * 上一曲API
+     */
+    class PreviousTrackServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            try {
+                SmtcController.handlePreviousTrack()
+                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
+                httpServer.sendMediaKeyEvent(0xB1)
+                
+                Thread.sleep(100)
+                
+                val newMedia = PlaybackStateHolder.currentMedia
+                val response = mapOf(
+                    "status" to "success",
+                    "action" to "previous_track",
+                    "newTrack" to (newMedia?.title ?: "未知曲目"),
+                    "message" to "已切换到上一曲"
+                )
+                resp.writer.write(Gson().toJson(response))
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "上一曲操作失败: ${e.message}"
+                )))
+            }
+        }
+    }
+
+    /**
+     * 音量增加API
+     */
+    class VolumeUpServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            try {
+                SmtcController.handleVolumeUp()
+                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
+                httpServer.sendMediaKeyEvent(0xAF)
+                
+                Thread.sleep(50)
+                
+                val response = mapOf(
+                    "status" to "success",
+                    "action" to "volume_up",
+                    "currentVolume" to PlaybackStateHolder.volume,
+                    "message" to "音量已增加"
+                )
+                resp.writer.write(Gson().toJson(response))
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "音量增加操作失败: ${e.message}"
+                )))
+            }
+        }
+    }
+
+    /**
+     * 音量减少API
+     */
+    class VolumeDownServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            try {
+                SmtcController.handleVolumeDown()
+                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
+                httpServer.sendMediaKeyEvent(0xAE)
+                
+                Thread.sleep(50)
+                
+                val response = mapOf(
+                    "status" to "success",
+                    "action" to "volume_down",
+                    "currentVolume" to PlaybackStateHolder.volume,
+                    "message" to "音量已减少"
+                )
+                resp.writer.write(Gson().toJson(response))
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "音量减少操作失败: ${e.message}"
+                )))
+            }
+        }
+    }
+
+    /**
+     * 静音切换API
+     */
+    class MuteServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            try {
+                SmtcController.handleMute()
+                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
+                httpServer.sendMediaKeyEvent(0xAD)
+                
+                Thread.sleep(50)
+                
+                val isMuted = PlaybackStateHolder.volume == 0.0f
+                val response = mapOf(
+                    "status" to "success",
+                    "action" to "mute_toggle",
+                    "isMuted" to isMuted,
+                    "message" to if (isMuted) "已静音" else "已取消静音"
+                )
+                resp.writer.write(Gson().toJson(response))
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "静音操作失败: ${e.message}"
+                )))
+            }
+        }
+    }
+
+    /**
+     * 发送系统媒体键事件
+     */
+    private fun sendMediaKeyEvent(virtualKeyCode: Int) {
+        try {
+            val user32 = User32Ex.INSTANCE
+            user32.keybd_event(virtualKeyCode.toByte(), 0, 0, 0)
+            Thread.sleep(10)
+            user32.keybd_event(virtualKeyCode.toByte(), 0, 2, 0)
+        } catch (e: Exception) {
+            println("发送媒体键事件失败: ${e.message}")
+        }
+    }
+
+    // JNA接口
+    interface User32Ex : com.sun.jna.Library {
+        fun keybd_event(bVk: Byte, bScan: Byte, dwFlags: Int, dwExtraInfo: Int)
+
+        companion object {
+            val INSTANCE: User32Ex by lazy {
+                Native.load("user32", User32Ex::class.java) as User32Ex
+            }
+        }
+    }
+}
