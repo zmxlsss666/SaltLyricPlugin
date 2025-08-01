@@ -4,8 +4,14 @@ import com.xuncorp.spw.workshop.api.PlaybackExtensionPoint
 import com.xuncorp.spw.workshop.api.WorkshopApi
 import com.xuncorp.spw.workshop.api.PlaybackExtensionPoint.MediaItem
 import com.xuncorp.spw.workshop.api.PlaybackExtensionPoint.State
+import org.json.JSONArray
+import org.json.JSONObject
 import org.pf4j.Extension
 import java.lang.reflect.Method
+import java.net.URLEncoder
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.concurrent.thread
 
 object PlaybackStateHolder {
     @Volatile
@@ -18,6 +24,10 @@ object PlaybackStateHolder {
     var currentPosition: Long = 0L
     @Volatile
     var volume: Float = 1.0f
+    @Volatile
+    var lyricUrl: String? = null
+    @Volatile
+    var coverUrl: String? = null
 }
 
 @Extension
@@ -55,7 +65,55 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
 
     override fun updateLyrics(mediaItem: MediaItem): String? {
         PlaybackStateHolder.currentMedia = mediaItem
+        
+        // 重置歌词和封面URL
+        PlaybackStateHolder.lyricUrl = null
+        PlaybackStateHolder.coverUrl = null
+        
+        // 启动后台线程获取歌词和封面信息
+        thread {
+            try {
+                // 构建搜索URL
+                val searchQuery = "${mediaItem.title}-${mediaItem.artist}"
+                val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
+                val searchUrl = "https://music.163.com/api/search/get?type=1&offset=0&limit=1&s=$encodedQuery"
+                
+                // 执行搜索请求
+                val searchResult = getUrlContent(searchUrl)
+                val searchJson = JSONObject(searchResult)
+                val songs = searchJson.getJSONObject("result").getJSONArray("songs")
+                
+                if (songs.length() > 0) {
+                    val songId = songs.getJSONObject(0).getInt("id")
+                    
+                    // 获取歌曲详细信息
+                    val songInfoUrl = "https://api.injahow.cn/meting/?type=song&id=$songId"
+                    val songInfoResult = getUrlContent(songInfoUrl)
+                    val songInfoArray = JSONArray(songInfoResult)
+                    
+                    if (songInfoArray.length() > 0) {
+                        val songInfo = songInfoArray.getJSONObject(0)
+                        PlaybackStateHolder.lyricUrl = songInfo.getString("lrc")
+                        PlaybackStateHolder.coverUrl = songInfo.getString("pic")
+                        println("获取歌词和封面成功: lyricUrl=${PlaybackStateHolder.lyricUrl}, coverUrl=${PlaybackStateHolder.coverUrl}")
+                    }
+                }
+            } catch (e: Exception) {
+                println("获取歌词/封面失败: ${e.message}")
+            }
+        }
+        
         return null // 使用默认歌词逻辑
+    }
+    
+    // 辅助方法：获取URL内容
+    private fun getUrlContent(urlString: String): String {
+        val url = URL(urlString)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.connectTimeout = 5000
+        conn.readTimeout = 5000
+        return conn.inputStream.bufferedReader().use { it.readText() }
     }
 
     // 音量控制
