@@ -153,7 +153,7 @@ class HttpServer(private val port: Int) {
 
             <script>
                 // 动态获取当前域名作为API基础地址
-                const API_BASE = `${window.location.origin}/api`;
+                const API_BASE = window.location.origin + '/api';
                 let isConnected = false;
                 let isPlaying = false;
                 let isMuted = false;
@@ -191,13 +191,17 @@ class HttpServer(private val port: Int) {
                     const totalSeconds = Math.floor(ms / 1000);
                     const minutes = Math.floor(totalSeconds / 60);
                     const seconds = totalSeconds % 60;
-                    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    return minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
                 }
 
                 // 显示状态消息
                 function showMessage(message, isError = false) {
                     elements.statusMessage.textContent = message;
-                    elements.statusMessage.className = `text-sm max-w-md w-full text-center mb-4 transition-opacity duration-300 ${isError ? 'text-red-400' : 'text-green-400'}`;
+                    if (isError) {
+                        elements.statusMessage.className = 'text-sm max-w-md w-full text-center mb-4 transition-opacity duration-300 text-red-400';
+                    } else {
+                        elements.statusMessage.className = 'text-sm max-w-md w-full text-center mb-4 transition-opacity duration-300 text-green-400';
+                    }
                     elements.statusMessage.style.opacity = '1';
                     
                     // 如果是跨域错误，显示帮助卡片
@@ -206,7 +210,7 @@ class HttpServer(private val port: Int) {
                         corsErrorShown = true;
                     }
                     
-                    setTimeout(() => {
+                    setTimeout(function() {
                         elements.statusMessage.style.opacity = '0';
                     }, 3000);
                 }
@@ -215,25 +219,19 @@ class HttpServer(private val port: Int) {
                 function updateConnectionStatus(connected) {
                     isConnected = connected;
                     if (connected) {
-                        elements.connectionStatus.innerHTML = `
-                            <div class="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
-                            <span class="text-sm text-gray-300">已连接到 API</span>
-                        `;
+                        elements.connectionStatus.innerHTML = '<div class="w-3 h-3 rounded-full bg-green-500 mr-2"></div><span class="text-sm text-gray-300">已连接到 API</span>';
                         // 隐藏错误卡片
                         elements.errorCard.classList.add('hidden');
                         corsErrorShown = false;
                         
                         // 启用所有按钮
-                        document.querySelectorAll('button').forEach(btn => {
+                        document.querySelectorAll('button').forEach(function(btn) {
                             btn.removeAttribute('disabled');
                         });
                     } else {
-                        elements.connectionStatus.innerHTML = `
-                            <div class="w-3 h-3 rounded-full bg-red-500 mr-2 animate-pulse"></div>
-                            <span class="text-sm text-gray-300">未连接到 API</span>
-                        `;
+                        elements.connectionStatus.innerHTML = '<div class="w-3 h-3 rounded-full bg-red-500 mr-2 animate-pulse"></div><span class="text-sm text-gray-300">未连接到 API</span>';
                         // 禁用所有按钮
-                        document.querySelectorAll('button').forEach(btn => {
+                        document.querySelectorAll('button').forEach(function(btn) {
                             btn.setAttribute('disabled', 'true');
                         });
                     }
@@ -245,21 +243,27 @@ class HttpServer(private val port: Int) {
                     elements.trackArtist.textContent = data.artist || "未知艺术家";
                     elements.trackAlbum.textContent = data.album || "未知专辑";
                     elements.currentTime.textContent = formatTime(data.position);
-                    elements.volumeDisplay.textContent = data.volume !== undefined ? `${Math.round(data.volume * 100)}%` : "--";
+                    elements.volumeDisplay.textContent = data.volume !== undefined ? Math.round(data.volume * 100) + '%' : "--";
                     
                     // 更新进度条
-                    elements.progressBar.style.width = data.position ? `${(data.position % 300000) / 3000}%` : "0%";
+                    elements.progressBar.style.width = data.position ? (data.position % 300000) / 3000 + '%' : "0%";
                     
                     // 更新播放状态
                     isPlaying = data.isPlaying;
-                    elements.playPauseIcon.className = isPlaying ? "fa fa-pause text-2xl md:text-3xl" : "fa fa-play text-2xl md:text-3xl";
+                    if (isPlaying) {
+                        elements.playPauseIcon.className = "fa fa-pause text-2xl md:text-3xl";
+                    } else {
+                        elements.playPauseIcon.className = "fa fa-play text-2xl md:text-3xl";
+                    }
                     
                     // 专辑封面效果
                     if (data.title) {
-                        const hash = Array.from(data.title).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                        const color1 = `hsl(${hash % 360}, 70%, 60%)`;
-                        const color2 = `hsl(${(hash + 120) % 360}, 70%, 60%)`;
-                        elements.albumCover.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
+                        const hash = Array.from(data.title).reduce(function(acc, char) {
+                            return acc + char.charCodeAt(0);
+                        }, 0);
+                        const color1 = 'hsl(' + (hash % 360) + ', 70%, 60%)';
+                        const color2 = 'hsl(' + ((hash + 120) % 360) + ', 70%, 60%)';
+                        elements.albumCover.style.background = 'linear-gradient(135deg, ' + color1 + ', ' + color2 + ')';
                         elements.albumCover.style.opacity = '1';
                     }
                 }
@@ -267,7 +271,7 @@ class HttpServer(private val port: Int) {
                 // API请求函数
                 async function apiRequest(endpoint) {
                     try {
-                        const response = await fetch(`${API_BASE}${endpoint}`, {
+                        const response = await fetch(API_BASE + endpoint, {
                             mode: 'cors',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -275,7 +279,7 @@ class HttpServer(private val port: Int) {
                         });
                         
                         if (!response.ok) {
-                            throw new Error(`HTTP错误: ${response.status} (${response.statusText})`);
+                            throw new Error('HTTP错误: ' + response.status + ' (' + response.statusText + ')');
                         }
                         
                         const data = await response.json();
@@ -288,7 +292,7 @@ class HttpServer(private val port: Int) {
                         return data;
                     } catch (error) {
                         // 更详细的错误信息
-                        let errorMsg = `请求失败: ${error.message}`;
+                        let errorMsg = '请求失败: ' + error.message;
                         if (error.message.includes('Failed to fetch')) {
                             errorMsg += " - 可能是跨域限制(CORS)问题";
                         }
@@ -315,7 +319,11 @@ class HttpServer(private val port: Int) {
                     const data = await apiRequest('/play-pause');
                     if (data) {
                         isPlaying = data.isPlaying;
-                        elements.playPauseIcon.className = isPlaying ? "fa fa-pause text-2xl md:text-3xl" : "fa fa-play text-2xl md:text-3xl";
+                        if (isPlaying) {
+                            elements.playPauseIcon.className = "fa fa-pause text-2xl md:text-3xl";
+                        } else {
+                            elements.playPauseIcon.className = "fa fa-play text-2xl md:text-3xl";
+                        }
                         showMessage(data.message);
                         fetchNowPlaying();
                     }
@@ -343,7 +351,7 @@ class HttpServer(private val port: Int) {
                 async function volumeUp() {
                     const data = await apiRequest('/volume/up');
                     if (data) {
-                        elements.volumeDisplay.textContent = `${Math.round(data.currentVolume * 100)}%`;
+                        elements.volumeDisplay.textContent = Math.round(data.currentVolume * 100) + '%';
                         showMessage(data.message);
                     }
                 }
@@ -352,7 +360,7 @@ class HttpServer(private val port: Int) {
                 async function volumeDown() {
                     const data = await apiRequest('/volume/down');
                     if (data) {
-                        elements.volumeDisplay.textContent = `${Math.round(data.currentVolume * 100)}%`;
+                        elements.volumeDisplay.textContent = Math.round(data.currentVolume * 100) + '%';
                         showMessage(data.message);
                     }
                 }
@@ -362,7 +370,11 @@ class HttpServer(private val port: Int) {
                     const data = await apiRequest('/mute');
                     if (data) {
                         isMuted = data.isMuted;
-                        elements.muteIcon.className = isMuted ? "fa fa-volume-off text-xl" : "fa fa-volume-up text-xl";
+                        if (isMuted) {
+                            elements.muteIcon.className = "fa fa-volume-off text-xl";
+                        } else {
+                            elements.muteIcon.className = "fa fa-volume-up text-xl";
+                        }
                         showMessage(data.message);
                     }
                 }
@@ -377,7 +389,7 @@ class HttpServer(private val port: Int) {
                     elements.muteBtn.addEventListener('click', toggleMute);
                     
                     // 键盘快捷键
-                    document.addEventListener('keydown', (e) => {
+                    document.addEventListener('keydown', function(e) {
                         if (!isConnected) return;
                         
                         switch(e.key) {
@@ -407,7 +419,7 @@ class HttpServer(private val port: Int) {
                 // 初始化
                 function init() {
                     // 初始禁用所有按钮
-                    document.querySelectorAll('button').forEach(btn => {
+                    document.querySelectorAll('button').forEach(function(btn) {
                         btn.setAttribute('disabled', 'true');
                     });
                     
