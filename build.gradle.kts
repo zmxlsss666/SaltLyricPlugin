@@ -36,7 +36,7 @@ dependencies {
 }
 val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
 val pluginId = "zmxl-spw-control"
-val pluginVersion = "1.0.0"
+val pluginVersion = "1.1.0"
 val pluginProvider = "zmxl"
 
 tasks.named<Jar>("jar") {
