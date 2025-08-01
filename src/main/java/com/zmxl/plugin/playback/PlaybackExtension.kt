@@ -99,8 +99,8 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         
         // 根据播放状态更新进度计时器
         when (state) {
-            State.PLAYING -> PlaybackStateHolder.startPositionUpdate()  // 使用大写枚举值
-            State.PAUSED, State.STOPPED -> PlaybackStateHolder.stopPositionUpdate()  // 使用大写枚举值
+            State.Playing -> PlaybackStateHolder.startPositionUpdate()
+            State.Paused, State.Stopped -> PlaybackStateHolder.stopPositionUpdate()
             else -> {}
         }
     }
