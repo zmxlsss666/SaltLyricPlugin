@@ -11,6 +11,8 @@ import java.lang.reflect.Method
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.Timer
+import java.util.TimerTask
 import kotlin.concurrent.thread
 
 object PlaybackStateHolder {
@@ -21,13 +23,54 @@ object PlaybackStateHolder {
     @Volatile
     var currentState: State = State.Idle
     @Volatile
-    var currentPosition: Long = 0L
-    @Volatile
     var volume: Float = 1.0f
     @Volatile
     var lyricUrl: String? = null
     @Volatile
     var coverUrl: String? = null
+    
+    // 播放进度跟踪
+    @Volatile
+    var currentPosition: Long = 0L
+    private var positionUpdateTimer: Timer? = null
+    private var lastPositionUpdateTime: Long = 0
+    
+    // 开始更新播放进度
+    fun startPositionUpdate() {
+        stopPositionUpdate() // 确保之前的定时器已停止
+        
+        positionUpdateTimer = Timer(true) // 使用守护线程
+        lastPositionUpdateTime = System.currentTimeMillis()
+        
+        positionUpdateTimer?.scheduleAtFixedRate(object : TimerTask() {
+            override fun run() {
+                if (isPlaying) {
+                    val now = System.currentTimeMillis()
+                    val elapsed = now - lastPositionUpdateTime
+                    currentPosition += elapsed
+                    lastPositionUpdateTime = now
+                }
+            }
+        }, 0, 100) // 每100毫秒更新一次
+    }
+    
+    // 停止更新播放进度
+    fun stopPositionUpdate() {
+        positionUpdateTimer?.cancel()
+        positionUpdateTimer = null
+    }
+    
+    // 设置播放位置（如跳转时）
+    fun setPosition(position: Long) {
+        currentPosition = position
+        lastPositionUpdateTime = System.currentTimeMillis()
+    }
+    
+    // 重置播放位置
+    fun resetPosition() {
+        currentPosition = 0L
+        lastPositionUpdateTime = System.currentTimeMillis()
+    }
 }
 
 @Extension
@@ -53,14 +96,29 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
 
     override fun onStateChanged(state: State) {
         PlaybackStateHolder.currentState = state
+        
+        // 根据播放状态更新进度计时器
+        when (state) {
+            State.Playing -> PlaybackStateHolder.startPositionUpdate()
+            State.Paused, State.Stopped -> PlaybackStateHolder.stopPositionUpdate()
+            else -> {}
+        }
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         PlaybackStateHolder.isPlaying = isPlaying
+        
+        // 根据播放状态更新进度计时器
+        if (isPlaying) {
+            PlaybackStateHolder.startPositionUpdate()
+        } else {
+            PlaybackStateHolder.stopPositionUpdate()
+        }
     }
 
     override fun onSeekTo(position: Long) {
-        PlaybackStateHolder.currentPosition = position
+        // 设置新的播放位置
+        PlaybackStateHolder.setPosition(position)
     }
 
     override fun updateLyrics(mediaItem: MediaItem): String? {
@@ -69,6 +127,9 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         // 重置歌词和封面URL
         PlaybackStateHolder.lyricUrl = null
         PlaybackStateHolder.coverUrl = null
+        
+        // 重置播放位置
+        PlaybackStateHolder.resetPosition()
         
         // 启动后台线程获取歌词和封面信息
         thread {
@@ -128,7 +189,7 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
     // 进度跳转
     fun seekTo(position: Long) {
         // 实际跳转需要调用SPW内部API
-        PlaybackStateHolder.currentPosition = position
+        PlaybackStateHolder.setPosition(position)
     }
 
     // 播放/暂停切换
