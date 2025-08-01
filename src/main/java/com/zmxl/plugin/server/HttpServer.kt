@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletResponse
 import java.io.IOException
 import java.io.InputStreamReader
 import java.io.PrintWriter
+import java.net.URL
 import java.nio.charset.StandardCharsets
 
 class HttpServer(private val port: Int) {
@@ -78,27 +79,103 @@ class HttpServer(private val port: Int) {
             resp.contentType = "text/html;charset=UTF-8"
             resp.characterEncoding = "UTF-8"
             
-            // 从类路径资源加载HTML文件
-            val htmlContent = loadHtmlResource("/index.html")
+            // 使用正确的类加载器加载资源
+            val htmlContent = loadHtmlResource()
             if (htmlContent != null) {
                 resp.writer.write(htmlContent)
             } else {
                 resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write("404 - 控制界面未找到")
+                resp.writer.write("""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>404 - 控制界面未找到</title>
+                        <style>
+                            body { 
+                                background-color: #1e293b; 
+                                color: #f8fafc; 
+                                font-family: sans-serif; 
+                                display: flex; 
+                                justify-content: center; 
+                                align-items: center; 
+                                height: 100vh; 
+                                margin: 0; 
+                            }
+                            .container { 
+                                text-align: center; 
+                                padding: 2rem; 
+                                border-radius: 1rem; 
+                                background-color: #334155; 
+                                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                            }
+                            h1 { 
+                                color: #ef4444; 
+                                margin-bottom: 1rem;
+                            }
+                            p { 
+                                margin-bottom: 0.5rem;
+                            }
+                            .resource-path {
+                                background-color: #475569;
+                                padding: 0.5rem;
+                                border-radius: 0.25rem;
+                                font-family: monospace;
+                                margin-top: 1rem;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <h1>404 - 控制界面未找到</h1>
+                            <p>无法加载控制界面HTML文件</p>
+                            <p>请确保插件已正确打包，且index.html位于类路径根目录</p>
+                            <p>当前时间: ${System.currentTimeMillis()}</p>
+                            <div class="resource-path">查找路径: ${getResourcePathInfo()}</div>
+                        </div>
+                    </body>
+                    </html>
+                """.trimIndent())
+                println("无法加载控制界面HTML")
             }
         }
 
-        private fun loadHtmlResource(path: String): String? {
+        private fun loadHtmlResource(): String? {
             return try {
-                val inputStream = this.javaClass.getResourceAsStream(path)
-                if (inputStream != null) {
-                    InputStreamReader(inputStream, StandardCharsets.UTF_8).use { it.readText() }
+                // 使用正确的类加载器访问资源
+                val classLoader = this::class.java.classLoader
+                val resourceUrl: URL? = classLoader?.getResource("index.html")
+                
+                if (resourceUrl != null) {
+                    println("[资源加载] 找到HTML资源: $resourceUrl")
+                    resourceUrl.openStream().use { inputStream ->
+                        InputStreamReader(inputStream, StandardCharsets.UTF_8).use { reader ->
+                            reader.readText()
+                        }
+                    }
                 } else {
+                    println("[资源加载] 未找到HTML资源: index.html")
+                    println("[资源加载] 类加载器: ${classLoader?.javaClass?.name}")
+                    println("[资源加载] 资源搜索路径: ${getResourcePathInfo()}")
                     null
                 }
             } catch (e: Exception) {
-                println("加载HTML资源失败: ${e.message}")
+                println("[资源加载] 加载HTML资源失败: ${e.message}")
+                e.printStackTrace()
                 null
+            }
+        }
+        
+        private fun getResourcePathInfo(): String {
+            return try {
+                val classLoader = this::class.java.classLoader
+                val urls = (classLoader as? java.net.URLClassLoader)?.urLs
+                if (urls != null) {
+                    "类路径: ${urls.joinToString("\n") { it.toString() }}"
+                } else {
+                    "无法获取类路径信息"
+                }
+            } catch (e: Exception) {
+                "获取类路径信息失败: ${e.message}"
             }
         }
     }
