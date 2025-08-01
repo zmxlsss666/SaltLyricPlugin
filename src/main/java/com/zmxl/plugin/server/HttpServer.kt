@@ -19,7 +19,7 @@ import java.net.URL
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
     private val controlHtml = """
-      <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -376,7 +376,7 @@ class HttpServer(private val port: Int) {
             <div class="status-bar">
                 <div class="status-item">
                     <i class="fas fa-plug"></i>
-                    <span>SaltPlayer API 已连接</span>
+                    <span id="api-status">SaltPlayer API 连接中...</span>
                 </div>
                 <div class="status-item">
                     <i class="fas fa-clock"></i>
@@ -399,6 +399,9 @@ class HttpServer(private val port: Int) {
         let updateInterval;
         let lyricsUpdateInterval;
         
+        // API端点
+        const API_BASE = '/api';  // 使用相对路径
+        
         // DOM元素
         const trackTitle = document.getElementById('track-title');
         const trackArtist = document.getElementById('track-artist');
@@ -417,6 +420,7 @@ class HttpServer(private val port: Int) {
         const updateTime = document.getElementById('update-time');
         const loading = document.getElementById('loading');
         const errorMessage = document.getElementById('error-message');
+        const apiStatus = document.getElementById('api-status');
         
         // 格式化毫秒为 MM:SS
         function formatTime(ms) {
@@ -440,7 +444,7 @@ class HttpServer(private val port: Int) {
         // 获取当前播放信息
         async function getNowPlaying() {
             try {
-                const response = await fetch('http://localhost:35373/api/now-playing');
+                const response = await fetch(`${API_BASE}/now-playing`);
                 if (!response.ok) throw new Error('网络响应不正常');
                 return await response.json();
             } catch (error) {
@@ -452,7 +456,7 @@ class HttpServer(private val port: Int) {
         // 获取歌词
         async function getLyrics() {
             try {
-                const response = await fetch('http://localhost:35373/api/lyric');
+                const response = await fetch(`${API_BASE}/lyric`);
                 if (!response.ok) throw new Error('歌词获取失败');
                 
                 const data = await response.json();
@@ -558,12 +562,13 @@ class HttpServer(private val port: Int) {
                 
                 // 更新进度条
                 currentPosition = data.position || 0;
-                const positionPercent = Math.min(100, (currentPosition / 300000) * 100); // 假设最大时长5分钟
+                const duration = data.duration || 300000; // 默认5分钟
+                const positionPercent = Math.min(100, (currentPosition / duration) * 100);
                 progressBar.style.width = `${positionPercent}%`;
                 
                 // 更新时间显示
                 currentTime.textContent = formatTime(currentPosition);
-                totalTime.textContent = formatTime(300000); // 假设总时长5分钟
+                totalTime.textContent = formatTime(duration);
                 
                 // 更新封面
                 await updateCover();
@@ -578,19 +583,26 @@ class HttpServer(private val port: Int) {
                 const now = new Date();
                 updateTime.textContent = `最后更新: ${now.toLocaleTimeString()}`;
                 
+                // 更新API连接状态
+                apiStatus.textContent = "SaltPlayer API 已连接";
+                apiStatus.style.color = "#8a8dcc";
+                
                 loading.style.display = 'none';
             } catch (error) {
                 showError(`更新播放器失败: ${error.message}`);
                 loading.style.display = 'none';
+                
+                // 更新API连接状态
+                apiStatus.textContent = "SaltPlayer API 连接失败";
+                apiStatus.style.color = "#ff6b6b";
             }
         }
         
         // 更新封面
         async function updateCover() {
             try {
-                // 这里应该调用 /api/pic 获取封面图片
-                // 由于API文档中端点描述有误，这里使用占位符
-                const coverUrl = `https://picsum.photos/200/200?random=${Date.now()}`;
+                // 使用相对路径获取封面
+                const coverUrl = `${API_BASE}/pic?t=${Date.now()}`; // 添加时间戳避免缓存
                 albumCover.src = coverUrl;
                 albumCover.style.display = 'block';
                 albumCover.previousElementSibling.style.display = 'none';
@@ -613,7 +625,7 @@ class HttpServer(private val port: Int) {
         // 切换播放/暂停
         async function togglePlayPause() {
             try {
-                const response = await fetch('http://localhost:35373/api/play-pause');
+                const response = await fetch(`${API_BASE}/play-pause`);
                 if (!response.ok) throw new Error('操作失败');
                 
                 const data = await response.json();
@@ -630,7 +642,7 @@ class HttpServer(private val port: Int) {
         // 上一曲
         async function prevTrack() {
             try {
-                await fetch('http://localhost:35373/api/previous-track');
+                await fetch(`${API_BASE}/previous-track`);
                 // 重置歌词
                 currentLyrics = [];
                 await updatePlayer();
@@ -642,7 +654,7 @@ class HttpServer(private val port: Int) {
         // 下一曲
         async function nextTrack() {
             try {
-                await fetch('http://localhost:35373/api/next-track');
+                await fetch(`${API_BASE}/next-track`);
                 // 重置歌词
                 currentLyrics = [];
                 await updatePlayer();
@@ -669,7 +681,7 @@ class HttpServer(private val port: Int) {
         // 增加音量
         async function volumeUp() {
             try {
-                await fetch('http://localhost:35373/api/volume/up');
+                await fetch(`${API_BASE}/volume/up`);
                 
                 // 模拟音量变化
                 const currentVolume = parseInt(volumeSlider.value);
@@ -690,7 +702,7 @@ class HttpServer(private val port: Int) {
         // 减少音量
         async function volumeDown() {
             try {
-                await fetch('http://localhost:35373/api/volume/down');
+                await fetch(`${API_BASE}/volume/down`);
                 
                 // 模拟音量变化
                 const currentVolume = parseInt(volumeSlider.value);
@@ -737,7 +749,7 @@ class HttpServer(private val port: Int) {
             await updatePlayer();
             
             // 设置定时器更新播放信息
-            updateInterval = setInterval(updatePlayer, 100);
+            updateInterval = setInterval(updatePlayer, 1000);
             
             // 设置定时器更新歌词（更频繁）
             lyricsUpdateInterval = setInterval(() => {
