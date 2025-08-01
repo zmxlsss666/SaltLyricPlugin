@@ -13,6 +13,8 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import java.io.IOException
 import java.io.PrintWriter
+import java.net.HttpURLConnection
+import java.net.URL
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -314,6 +316,8 @@ class HttpServer(private val port: Int) {
         context.addServlet(ServletHolder(VolumeUpServlet()), "/api/volume/up")
         context.addServlet(ServletHolder(VolumeDownServlet()), "/api/volume/down")
         context.addServlet(ServletHolder(MuteServlet()), "/api/mute")
+        context.addServlet(ServletHolder(LyricServlet()), "/api/lyric")
+        context.addServlet(ServletHolder(PicServlet()), "/api/pic")
 
         // 处理所有其他请求，返回控制界面
         context.addServlet(ServletHolder(object : HttpServlet() {
@@ -576,6 +580,78 @@ class HttpServer(private val port: Int) {
     }
 
     /**
+     * 歌词API
+     */
+    class LyricServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            val lyricUrl = PlaybackStateHolder.lyricUrl
+            if (lyricUrl == null) {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "歌词地址未找到"
+                )))
+                return
+            }
+            
+            try {
+                // 获取歌词内容
+                val lyricContent = getUrlContent(lyricUrl)
+                
+                // 返回歌词
+                val response = mapOf(
+                    "status" to "success",
+                    "lyric" to lyricContent
+                )
+                resp.writer.write(Gson().toJson(response))
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "获取歌词失败: ${e.message}"
+                )))
+            }
+        }
+    }
+
+    /**
+     * 封面图片API
+     */
+    class PicServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            val coverUrl = PlaybackStateHolder.coverUrl
+            if (coverUrl == null) {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write("封面地址未找到")
+                return
+            }
+            
+            try {
+                // 获取图片内容
+                val url = URL(coverUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                
+                // 设置正确的Content-Type
+                val contentType = conn.contentType ?: "image/jpeg"
+                resp.contentType = contentType
+                
+                // 将图片数据写入响应
+                conn.inputStream.copyTo(resp.outputStream)
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write("获取封面失败: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * 发送系统媒体键事件
      */
     fun sendMediaKeyEvent(virtualKeyCode: Int) {
@@ -587,6 +663,16 @@ class HttpServer(private val port: Int) {
         } catch (e: Exception) {
             println("发送媒体键事件失败: ${e.message}")
         }
+    }
+
+    // 辅助方法：获取URL内容
+    private fun getUrlContent(urlString: String): String {
+        val url = URL(urlString)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.connectTimeout = 5000
+        conn.readTimeout = 5000
+        return conn.inputStream.bufferedReader().use { it.readText() }
     }
 
     // JNA接口
