@@ -23,7 +23,7 @@ object PlaybackStateHolder {
     @Volatile
     var currentState: State = State.Idle
     @Volatile
-    var volume: Float = 1.0f
+    var volume: Int = 100 // 音量范围改为0-100整数
     @Volatile
     var lyricUrl: String? = null
     @Volatile
@@ -34,6 +34,7 @@ object PlaybackStateHolder {
     var currentPosition: Long = 0L
     private var positionUpdateTimer: Timer? = null
     private var lastPositionUpdateTime: Long = 0
+    private var previousVolumeBeforeMute: Int = 100 // 静音前的音量
     
     // 开始更新播放进度
     fun startPositionUpdate() {
@@ -70,6 +71,18 @@ object PlaybackStateHolder {
     fun resetPosition() {
         currentPosition = 0L
         lastPositionUpdateTime = System.currentTimeMillis()
+    }
+    
+    // 静音/取消静音
+    fun toggleMute() {
+        if (volume > 0) {
+            // 保存当前音量并静音
+            previousVolumeBeforeMute = volume
+            volume = 0
+        } else {
+            // 恢复静音前的音量
+            volume = previousVolumeBeforeMute
+        }
     }
 }
 
@@ -180,9 +193,9 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         return conn.inputStream.bufferedReader().use { it.readText() }
     }
 
-    // 音量控制
-    fun setVolume(level: Float) {
-        if (level in 0.0f..1.0f) {
+    // 音量控制 - 现在使用0-100整数
+    fun setVolume(level: Int) {
+        if (level in 0..100) {
             PlaybackStateHolder.volume = level
             // 实际音量控制可能需要通过反射调用SPW内部方法
             // 这里仅做状态更新示例
