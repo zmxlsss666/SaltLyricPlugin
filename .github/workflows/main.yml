@@ -30,4 +30,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: plugin-zmxl-spw-control-1.0.0
-        path: build/libs/plugin-zmxl-spw-control-1.0.0.zip
+        path: build/libs/plugin-zmxl-spw-control-*.zip
