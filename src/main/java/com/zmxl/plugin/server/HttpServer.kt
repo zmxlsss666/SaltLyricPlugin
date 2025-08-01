@@ -11,13 +11,422 @@ import jakarta.servlet.http.HttpServlet
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import java.io.IOException
-import java.io.InputStreamReader
 import java.io.PrintWriter
-import java.net.URL
-import java.nio.charset.StandardCharsets
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
+    private val htmlContent: String = """
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Salt Player 控制器</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+            <script>
+                tailwind.config = {
+                    theme: {
+                        extend: {
+                            colors: {
+                                primary: '#3B82F6',
+                                secondary: '#10B981',
+                                dark: '#1E293B',
+                                light: '#F8FAFC',
+                                accent: '#8B5CF6'
+                            },
+                            fontFamily: {
+                                sans: ['Inter', 'system-ui', 'sans-serif'],
+                            },
+                        }
+                    }
+                }
+            </script>
+            <style type="text/tailwindcss">
+                @layer utilities {
+                    .content-auto {
+                        content-visibility: auto;
+                    }
+                    .backdrop-blur {
+                        backdrop-filter: blur(8px);
+                    }
+                    .text-shadow {
+                        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    }
+                    .btn-hover {
+                        transition: all 0.3s;
+                    }
+                    .btn-hover:hover {
+                        transform: scale(1.1);
+                    }
+                    .btn-hover:active {
+                        transform: scale(0.95);
+                    }
+                    .card-effect {
+                        background: rgba(255, 255, 255, 0.1);
+                        backdrop-filter: blur(8px);
+                        border-radius: 1rem;
+                        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+                        border: 1px solid rgba(255, 255, 255, 0.2);
+                    }
+                }
+            </style>
+        </head>
+        <body class="bg-gradient-to-br from-gray-900 to-slate-900 min-h-screen text-gray-100 font-sans flex flex-col items-center justify-center p-4">
+            <div class="max-w-md w-full card-effect p-6 md:p-8 mb-6">
+                <!-- 连接状态指示器 -->
+                <div id="connection-status" class="flex items-center justify-center mb-6">
+                    <div class="w-3 h-3 rounded-full bg-red-500 mr-2 animate-pulse"></div>
+                    <span class="text-sm text-gray-300">连接中...</span>
+                </div>
+
+                <!-- 专辑封面 -->
+                <div class="relative w-full aspect-square rounded-xl overflow-hidden mb-6 mx-auto bg-gradient-to-br from-blue-400/30 to-purple-600/30 flex items-center justify-center">
+                    <i class="fa fa-music text-6xl text-white/30"></i>
+                    <div id="album-cover" class="absolute inset-0 bg-cover bg-center opacity-0 transition-opacity duration-500"></div>
+                </div>
+
+                <!-- 当前播放信息 -->
+                <div class="text-center mb-8 space-y-2">
+                    <h1 id="track-title" class="text-2xl font-bold text-shadow truncate">等待连接...</h1>
+                    <p id="track-artist" class="text-gray-300 text-xl">未知艺术家</p>
+                    <p id="track-album" class="text-gray-400 text-sm">未知专辑</p>
+                    
+                    <!-- 进度条 -->
+                    <div class="mt-4 h-1 bg-gray-700/50 rounded-full overflow-hidden">
+                        <div id="progress-bar" class="h-full bg-blue-500 w-0 transition-all duration-300"></div>
+                    </div>
+                    
+                    <div class="flex justify-between text-xs text-gray-400 mt-1">
+                        <span id="current-time">00:00</span>
+                        <span id="volume-display">--</span>
+                    </div>
+                </div>
+
+                <!-- 主要控制按钮 -->
+                <div class="flex items-center justify-between mb-8 px-4">
+                    <button id="prev-btn" class="text-gray-300 hover:text-white btn-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa fa-step-backward text-2xl md:text-3xl"></i>
+                    </button>
+                    
+                    <button id="play-pause-btn" class="bg-blue-500 hover:bg-blue-400 text-white rounded-full w-16 h-16 md:w-20 md:h-20 flex items-center justify-center shadow-lg shadow-blue-500/20 btn-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i id="play-pause-icon" class="fa fa-play text-2xl md:text-3xl"></i>
+                    </button>
+                    
+                    <button id="next-btn" class="text-gray-300 hover:text-white btn-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa fa-step-forward text-2xl md:text-3xl"></i>
+                    </button>
+                </div>
+
+                <!-- 音量控制 -->
+                <div class="flex items-center justify-center space-x-6">
+                    <button id="volume-down-btn" class="text-gray-300 hover:text-white btn-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa fa-volume-down text-xl"></i>
+                    </button>
+                    
+                    <button id="mute-btn" class="text-gray-300 hover:text-white btn-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i id="mute-icon" class="fa fa-volume-up text-xl"></i>
+                    </button>
+                    
+                    <button id="volume-up-btn" class="text-gray-300 hover:text-white btn-hover disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fa fa-volume-up text-xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 状态消息 -->
+            <div id="status-message" class="text-sm text-gray-400 max-w-md w-full text-center mb-4 opacity-0 transition-opacity duration-300"></div>
+
+            <!-- 错误提示卡片 -->
+            <div id="error-card" class="max-w-md w-full card-effect p-4 mb-6 hidden">
+                <h3 class="font-bold text-red-400 mb-2 flex items-center">
+                    <i class="fa fa-exclamation-circle mr-2"></i>连接问题帮助
+                </h3>
+                <p class="text-sm text-gray-300 mb-2">如果看到"Failed to fetch"错误，可能是由于跨域限制(CORS)导致的。</p>
+                <p class="text-sm text-gray-300">请确保API服务器已配置正确的CORS头信息，允许当前域名的请求。</p>
+            </div>
+
+            <!-- 当前API域名显示 -->
+            <div id="api-domain-info" class="text-xs text-gray-500 max-w-md w-full text-center">
+                API 域名: <span id="current-api-domain">检测中...</span>
+            </div>
+
+            <script>
+                // 动态获取当前域名作为API基础地址
+                const API_BASE = `${window.location.origin}/api`;
+                let isConnected = false;
+                let isPlaying = false;
+                let isMuted = false;
+                let corsErrorShown = false;
+                
+                // DOM元素
+                const elements = {
+                    connectionStatus: document.getElementById('connection-status'),
+                    trackTitle: document.getElementById('track-title'),
+                    trackArtist: document.getElementById('track-artist'),
+                    trackAlbum: document.getElementById('track-album'),
+                    albumCover: document.getElementById('album-cover'),
+                    progressBar: document.getElementById('progress-bar'),
+                    currentTime: document.getElementById('current-time'),
+                    volumeDisplay: document.getElementById('volume-display'),
+                    playPauseBtn: document.getElementById('play-pause-btn'),
+                    playPauseIcon: document.getElementById('play-pause-icon'),
+                    prevBtn: document.getElementById('prev-btn'),
+                    nextBtn: document.getElementById('next-btn'),
+                    volumeUpBtn: document.getElementById('volume-up-btn'),
+                    volumeDownBtn: document.getElementById('volume-down-btn'),
+                    muteBtn: document.getElementById('mute-btn'),
+                    muteIcon: document.getElementById('mute-icon'),
+                    statusMessage: document.getElementById('status-message'),
+                    errorCard: document.getElementById('error-card'),
+                    currentApiDomain: document.getElementById('current-api-domain')
+                };
+
+                // 显示当前API域名
+                elements.currentApiDomain.textContent = API_BASE;
+
+                // 格式化时间（毫秒转分:秒）
+                function formatTime(ms) {
+                    if (isNaN(ms)) return "00:00";
+                    const totalSeconds = Math.floor(ms / 1000);
+                    const minutes = Math.floor(totalSeconds / 60);
+                    const seconds = totalSeconds % 60;
+                    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+
+                // 显示状态消息
+                function showMessage(message, isError = false) {
+                    elements.statusMessage.textContent = message;
+                    elements.statusMessage.className = `text-sm max-w-md w-full text-center mb-4 transition-opacity duration-300 ${isError ? 'text-red-400' : 'text-green-400'}`;
+                    elements.statusMessage.style.opacity = '1';
+                    
+                    // 如果是跨域错误，显示帮助卡片
+                    if (isError && message.includes('Failed to fetch') && !corsErrorShown) {
+                        elements.errorCard.classList.remove('hidden');
+                        corsErrorShown = true;
+                    }
+                    
+                    setTimeout(() => {
+                        elements.statusMessage.style.opacity = '0';
+                    }, 3000);
+                }
+
+                // 更新连接状态显示
+                function updateConnectionStatus(connected) {
+                    isConnected = connected;
+                    if (connected) {
+                        elements.connectionStatus.innerHTML = `
+                            <div class="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+                            <span class="text-sm text-gray-300">已连接到 API</span>
+                        `;
+                        // 隐藏错误卡片
+                        elements.errorCard.classList.add('hidden');
+                        corsErrorShown = false;
+                        
+                        // 启用所有按钮
+                        document.querySelectorAll('button').forEach(btn => {
+                            btn.removeAttribute('disabled');
+                        });
+                    } else {
+                        elements.connectionStatus.innerHTML = `
+                            <div class="w-3 h-3 rounded-full bg-red-500 mr-2 animate-pulse"></div>
+                            <span class="text-sm text-gray-300">未连接到 API</span>
+                        `;
+                        // 禁用所有按钮
+                        document.querySelectorAll('button').forEach(btn => {
+                            btn.setAttribute('disabled', 'true');
+                        });
+                    }
+                }
+
+                // 更新播放信息
+                function updateNowPlaying(data) {
+                    elements.trackTitle.textContent = data.title || "未知标题";
+                    elements.trackArtist.textContent = data.artist || "未知艺术家";
+                    elements.trackAlbum.textContent = data.album || "未知专辑";
+                    elements.currentTime.textContent = formatTime(data.position);
+                    elements.volumeDisplay.textContent = data.volume !== undefined ? `${Math.round(data.volume * 100)}%` : "--";
+                    
+                    // 更新进度条
+                    elements.progressBar.style.width = data.position ? `${(data.position % 300000) / 3000}%` : "0%";
+                    
+                    // 更新播放状态
+                    isPlaying = data.isPlaying;
+                    elements.playPauseIcon.className = isPlaying ? "fa fa-pause text-2xl md:text-3xl" : "fa fa-play text-2xl md:text-3xl";
+                    
+                    // 专辑封面效果
+                    if (data.title) {
+                        const hash = Array.from(data.title).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                        const color1 = `hsl(${hash % 360}, 70%, 60%)`;
+                        const color2 = `hsl(${(hash + 120) % 360}, 70%, 60%)`;
+                        elements.albumCover.style.background = `linear-gradient(135deg, ${color1}, ${color2})`;
+                        elements.albumCover.style.opacity = '1';
+                    }
+                }
+
+                // API请求函数
+                async function apiRequest(endpoint) {
+                    try {
+                        const response = await fetch(`${API_BASE}${endpoint}`, {
+                            mode: 'cors',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            }
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP错误: ${response.status} (${response.statusText})`);
+                        }
+                        
+                        const data = await response.json();
+                        
+                        if (data.status === "error") {
+                            showMessage(data.message, true);
+                            return null;
+                        }
+                        
+                        return data;
+                    } catch (error) {
+                        // 更详细的错误信息
+                        let errorMsg = `请求失败: ${error.message}`;
+                        if (error.message.includes('Failed to fetch')) {
+                            errorMsg += " - 可能是跨域限制(CORS)问题";
+                        }
+                        showMessage(errorMsg, true);
+                        updateConnectionStatus(false);
+                        return null;
+                    }
+                }
+
+                // 获取当前播放信息
+                async function fetchNowPlaying() {
+                    const data = await apiRequest('/now-playing');
+                    if (data) {
+                        updateConnectionStatus(true);
+                        updateNowPlaying(data);
+                        showMessage("已获取播放信息");
+                    } else {
+                        updateConnectionStatus(false);
+                    }
+                }
+
+                // 播放/暂停切换
+                async function togglePlayPause() {
+                    const data = await apiRequest('/play-pause');
+                    if (data) {
+                        isPlaying = data.isPlaying;
+                        elements.playPauseIcon.className = isPlaying ? "fa fa-pause text-2xl md:text-3xl" : "fa fa-play text-2xl md:text-3xl";
+                        showMessage(data.message);
+                        fetchNowPlaying();
+                    }
+                }
+
+                // 下一曲
+                async function nextTrack() {
+                    const data = await apiRequest('/next-track');
+                    if (data) {
+                        showMessage(data.message);
+                        fetchNowPlaying();
+                    }
+                }
+
+                // 上一曲
+                async function previousTrack() {
+                    const data = await apiRequest('/previous-track');
+                    if (data) {
+                        showMessage(data.message);
+                        fetchNowPlaying();
+                    }
+                }
+
+                // 音量增加
+                async function volumeUp() {
+                    const data = await apiRequest('/volume/up');
+                    if (data) {
+                        elements.volumeDisplay.textContent = `${Math.round(data.currentVolume * 100)}%`;
+                        showMessage(data.message);
+                    }
+                }
+
+                // 音量减少
+                async function volumeDown() {
+                    const data = await apiRequest('/volume/down');
+                    if (data) {
+                        elements.volumeDisplay.textContent = `${Math.round(data.currentVolume * 100)}%`;
+                        showMessage(data.message);
+                    }
+                }
+
+                // 静音切换
+                async function toggleMute() {
+                    const data = await apiRequest('/mute');
+                    if (data) {
+                        isMuted = data.isMuted;
+                        elements.muteIcon.className = isMuted ? "fa fa-volume-off text-xl" : "fa fa-volume-up text-xl";
+                        showMessage(data.message);
+                    }
+                }
+
+                // 绑定事件监听器
+                function bindEvents() {
+                    elements.playPauseBtn.addEventListener('click', togglePlayPause);
+                    elements.prevBtn.addEventListener('click', previousTrack);
+                    elements.nextBtn.addEventListener('click', nextTrack);
+                    elements.volumeUpBtn.addEventListener('click', volumeUp);
+                    elements.volumeDownBtn.addEventListener('click', volumeDown);
+                    elements.muteBtn.addEventListener('click', toggleMute);
+                    
+                    // 键盘快捷键
+                    document.addEventListener('keydown', (e) => {
+                        if (!isConnected) return;
+                        
+                        switch(e.key) {
+                            case ' ': // 空格
+                                e.preventDefault();
+                                togglePlayPause();
+                                break;
+                            case 'ArrowRight':
+                                nextTrack();
+                                break;
+                            case 'ArrowLeft':
+                                previousTrack();
+                                break;
+                            case 'ArrowUp':
+                                volumeUp();
+                                break;
+                            case 'ArrowDown':
+                                volumeDown();
+                                break;
+                            case 'm':
+                                toggleMute();
+                                break;
+                        }
+                    });
+                }
+
+                // 初始化
+                function init() {
+                    // 初始禁用所有按钮
+                    document.querySelectorAll('button').forEach(btn => {
+                        btn.setAttribute('disabled', 'true');
+                    });
+                    
+                    // 尝试连接
+                    fetchNowPlaying();
+                    
+                    // 每5秒刷新一次播放信息
+                    setInterval(fetchNowPlaying, 5000);
+                    
+                    // 绑定事件
+                    bindEvents();
+                }
+
+                // 启动应用
+                window.addEventListener('DOMContentLoaded', init);
+            </script>
+        </body>
+        </html>
+    """.trimIndent()
 
     init {
         // 初始化SMTC控制器
@@ -71,7 +480,7 @@ class HttpServer(private val port: Int) {
     }
 
     /**
-     * 根路径路由处理，返回控制界面HTML
+     * 根路径路由处理，返回硬编码的HTML内容
      */
     class HomeServlet : HttpServlet() {
         @Throws(IOException::class)
@@ -79,104 +488,12 @@ class HttpServer(private val port: Int) {
             resp.contentType = "text/html;charset=UTF-8"
             resp.characterEncoding = "UTF-8"
             
-            // 使用正确的类加载器加载资源
-            val htmlContent = loadHtmlResource()
-            if (htmlContent != null) {
-                resp.writer.write(htmlContent)
-            } else {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write("""
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <title>404 - 控制界面未找到</title>
-                        <style>
-                            body { 
-                                background-color: #1e293b; 
-                                color: #f8fafc; 
-                                font-family: sans-serif; 
-                                display: flex; 
-                                justify-content: center; 
-                                align-items: center; 
-                                height: 100vh; 
-                                margin: 0; 
-                            }
-                            .container { 
-                                text-align: center; 
-                                padding: 2rem; 
-                                border-radius: 1rem; 
-                                background-color: #334155; 
-                                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                            }
-                            h1 { 
-                                color: #ef4444; 
-                                margin-bottom: 1rem;
-                            }
-                            p { 
-                                margin-bottom: 0.5rem;
-                            }
-                            .resource-path {
-                                background-color: #475569;
-                                padding: 0.5rem;
-                                border-radius: 0.25rem;
-                                font-family: monospace;
-                                margin-top: 1rem;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <h1>404 - 控制界面未找到</h1>
-                            <p>无法加载控制界面HTML文件</p>
-                            <p>请确保插件已正确打包，且index.html位于类路径根目录</p>
-                            <p>当前时间: ${System.currentTimeMillis()}</p>
-                            <div class="resource-path">查找路径: ${getResourcePathInfo()}</div>
-                        </div>
-                    </body>
-                    </html>
-                """.trimIndent())
-                println("无法加载控制界面HTML")
-            }
-        }
-
-        private fun loadHtmlResource(): String? {
-            return try {
-                // 使用正确的类加载器访问资源
-                val classLoader = this::class.java.classLoader
-                val resourceUrl: URL? = classLoader?.getResource("index.html")
-                
-                if (resourceUrl != null) {
-                    println("[资源加载] 找到HTML资源: $resourceUrl")
-                    resourceUrl.openStream().use { inputStream ->
-                        InputStreamReader(inputStream, StandardCharsets.UTF_8).use { reader ->
-                            reader.readText()
-                        }
-                    }
-                } else {
-                    println("[资源加载] 未找到HTML资源: index.html")
-                    println("[资源加载] 类加载器: ${classLoader?.javaClass?.name}")
-                    println("[资源加载] 资源搜索路径: ${getResourcePathInfo()}")
-                    null
-                }
-            } catch (e: Exception) {
-                println("[资源加载] 加载HTML资源失败: ${e.message}")
-                e.printStackTrace()
-                null
-            }
-        }
-        
-        private fun getResourcePathInfo(): String {
-            return try {
-                val classLoader = this::class.java.classLoader
-                val urls = (classLoader as? java.net.URLClassLoader)?.urLs
-                if (urls != null) {
-                    "类路径: ${urls.joinToString("\n") { it.toString() }}"
-                } else {
-                    "无法获取类路径信息"
-                }
-            } catch (e: Exception) {
-                "获取类路径信息失败: ${e.message}"
-            }
+            // 获取HttpServer实例
+            val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
+            
+            // 直接返回硬编码的HTML内容
+            resp.writer.write(httpServer.htmlContent)
+            println("成功返回硬编码HTML内容")
         }
     }
 
