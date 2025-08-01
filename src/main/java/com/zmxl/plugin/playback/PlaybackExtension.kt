@@ -8,9 +8,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.pf4j.Extension
 import java.lang.reflect.Method
-import java.net.URLEncoder
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import kotlin.concurrent.thread
 
 object PlaybackStateHolder {
