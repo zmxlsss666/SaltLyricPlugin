@@ -15,6 +15,282 @@ import java.io.PrintWriter
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
+    private val controlHtml = """
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Salt Player 控制器</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background: #1e293b;
+                    color: white;
+                    margin: 0;
+                    padding: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                }
+                
+                .container {
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 10px;
+                    padding: 20px;
+                    max-width: 400px;
+                    width: 100%;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    text-align: center;
+                }
+                
+                .status {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-bottom: 20px;
+                }
+                
+                .status-dot {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                    margin-right: 10px;
+                }
+                
+                .connected {
+                    background: #10B981;
+                }
+                
+                .disconnected {
+                    background: #EF4444;
+                    animation: pulse 1.5s infinite;
+                }
+                
+                @keyframes pulse {
+                    0% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                    100% { opacity: 1; }
+                }
+                
+                .track-info {
+                    margin-bottom: 20px;
+                }
+                
+                .track-title {
+                    font-size: 24px;
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                }
+                
+                .track-artist {
+                    font-size: 18px;
+                    color: #94a3b8;
+                }
+                
+                .controls {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 20px;
+                }
+                
+                button {
+                    background: #3B82F6;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    padding: 10px 15px;
+                    cursor: pointer;
+                    font-size: 16px;
+                }
+                
+                .play-pause {
+                    background: #10B981;
+                    font-weight: bold;
+                }
+                
+                .message {
+                    margin-top: 20px;
+                    min-height: 20px;
+                }
+                
+                .success {
+                    color: #10B981;
+                }
+                
+                .error {
+                    color: #EF4444;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="status">
+                    <div id="status-dot" class="status-dot disconnected"></div>
+                    <span id="status-text">未连接到API</span>
+                </div>
+                
+                <div class="track-info">
+                    <div id="track-title" class="track-title">等待连接...</div>
+                    <div id="track-artist" class="track-artist">未知艺术家</div>
+                </div>
+                
+                <div class="controls">
+                    <button id="prev-btn">上一曲</button>
+                    <button id="play-pause-btn" class="play-pause">播放/暂停</button>
+                    <button id="next-btn">下一曲</button>
+                </div>
+                
+                <div class="controls">
+                    <button id="volume-down-btn">音量-</button>
+                    <button id="mute-btn">静音</button>
+                    <button id="volume-up-btn">音量+</button>
+                </div>
+                
+                <div id="message" class="message"></div>
+            </div>
+            
+            <script>
+                const API_BASE = window.location.origin + '/api';
+                let isPlaying = false;
+                let isMuted = false;
+                
+                // 更新连接状态
+                function updateConnectionStatus(connected) {
+                    const statusDot = document.getElementById('status-dot');
+                    const statusText = document.getElementById('status-text');
+                    
+                    if (connected) {
+                        statusDot.className = 'status-dot connected';
+                        statusText.textContent = '已连接到API';
+                    } else {
+                        statusDot.className = 'status-dot disconnected';
+                        statusText.textContent = '未连接到API';
+                    }
+                }
+                
+                // 更新播放信息
+                function updateNowPlaying(data) {
+                    document.getElementById('track-title').textContent = data.title || '未知标题';
+                    document.getElementById('track-artist').textContent = data.artist || '未知艺术家';
+                    
+                    isPlaying = data.isPlaying;
+                    document.getElementById('play-pause-btn').textContent = isPlaying ? '暂停' : '播放';
+                }
+                
+                // 显示消息
+                function showMessage(message, isError) {
+                    const messageEl = document.getElementById('message');
+                    messageEl.textContent = message;
+                    messageEl.className = isError ? 'message error' : 'message success';
+                    
+                    setTimeout(() => {
+                        messageEl.textContent = '';
+                    }, 3000);
+                }
+                
+                // API请求
+                async function apiRequest(endpoint) {
+                    try {
+                        const response = await fetch(API_BASE + endpoint);
+                        if (!response.ok) {
+                            throw new Error('请求失败: ' + response.status);
+                        }
+                        return await response.json();
+                    } catch (error) {
+                        showMessage(error.message, true);
+                        updateConnectionStatus(false);
+                        return null;
+                    }
+                }
+                
+                // 获取当前播放信息
+                async function fetchNowPlaying() {
+                    const data = await apiRequest('/now-playing');
+                    if (data) {
+                        updateConnectionStatus(true);
+                        updateNowPlaying(data);
+                    }
+                }
+                
+                // 播放/暂停
+                async function togglePlayPause() {
+                    const data = await apiRequest('/play-pause');
+                    if (data) {
+                        updateNowPlaying(data);
+                        showMessage(data.message);
+                    }
+                }
+                
+                // 下一曲
+                async function nextTrack() {
+                    const data = await apiRequest('/next-track');
+                    if (data) {
+                        fetchNowPlaying();
+                        showMessage(data.message);
+                    }
+                }
+                
+                // 上一曲
+                async function previousTrack() {
+                    const data = await apiRequest('/previous-track');
+                    if (data) {
+                        fetchNowPlaying();
+                        showMessage(data.message);
+                    }
+                }
+                
+                // 音量增加
+                async function volumeUp() {
+                    const data = await apiRequest('/volume/up');
+                    if (data) {
+                        showMessage(data.message);
+                    }
+                }
+                
+                // 音量减少
+                async function volumeDown() {
+                    const data = await apiRequest('/volume/down');
+                    if (data) {
+                        showMessage(data.message);
+                    }
+                }
+                
+                // 静音
+                async function toggleMute() {
+                    const data = await apiRequest('/mute');
+                    if (data) {
+                        isMuted = data.isMuted;
+                        document.getElementById('mute-btn').textContent = isMuted ? '取消静音' : '静音';
+                        showMessage(data.message);
+                    }
+                }
+                
+                // 初始化
+                function init() {
+                    // 绑定按钮事件
+                    document.getElementById('play-pause-btn').addEventListener('click', togglePlayPause);
+                    document.getElementById('prev-btn').addEventListener('click', previousTrack);
+                    document.getElementById('next-btn').addEventListener('click', nextTrack);
+                    document.getElementById('volume-up-btn').addEventListener('click', volumeUp);
+                    document.getElementById('volume-down-btn').addEventListener('click', volumeDown);
+                    document.getElementById('mute-btn').addEventListener('click', toggleMute);
+                    
+                    // 初始获取播放信息
+                    fetchNowPlaying();
+                    
+                    // 每5秒刷新一次
+                    setInterval(fetchNowPlaying, 5000);
+                }
+                
+                // 启动应用
+                document.addEventListener('DOMContentLoaded', init);
+            </script>
+        </body>
+        </html>
+    """.trimIndent()
 
     init {
         SmtcController.init()
@@ -26,17 +302,6 @@ class HttpServer(private val port: Int) {
         context.contextPath = "/"
         server.handler = context
 
-        // 添加根路径处理
-        context.addServlet(HomeServlet::class.java, "/")
-        
-        // 注册默认Servlet处理静态资源
-        val defaultHolder = ServletHolder("default", DefaultServlet::class.java)
-        defaultHolder.setInitParameter("dirAllowed", "false")
-        context.addServlet(defaultHolder, "/*")
-        
-        // 将HttpServer实例存入ServletContext
-        context.setAttribute("httpServer", this)
-
         // 注册API端点
         context.addServlet(NowPlayingServlet::class.java, "/api/now-playing")
         context.addServlet(PlayPauseServlet::class.java, "/api/play-pause")
@@ -45,6 +310,16 @@ class HttpServer(private val port: Int) {
         context.addServlet(VolumeUpServlet::class.java, "/api/volume/up")
         context.addServlet(VolumeDownServlet::class.java, "/api/volume/down")
         context.addServlet(MuteServlet::class.java, "/api/mute")
+
+        // 处理所有其他请求，返回控制界面
+        context.addServlet(object : HttpServlet() {
+            @Throws(IOException::class)
+            override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+                resp.contentType = "text/html;charset=UTF-8"
+                resp.characterEncoding = "UTF-8"
+                resp.writer.write(controlHtml)
+            }
+        }, "/*")
 
         try {
             server.start()
@@ -63,295 +338,6 @@ class HttpServer(private val port: Int) {
         } catch (e: Exception) {
             println("HTTP服务器停止失败: ${e.message}")
             e.printStackTrace()
-        }
-    }
-
-    /**
-     * 根路径路由处理
-     */
-    class HomeServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "text/html;charset=UTF-8"
-            resp.characterEncoding = "UTF-8"
-            
-            // 返回简单的控制界面HTML
-            resp.writer.write("""
-            <!DOCTYPE html>
-            <html lang="zh-CN">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Salt Player 控制器</title>
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        background: #1e293b;
-                        color: white;
-                        margin: 0;
-                        padding: 20px;
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        justify-content: center;
-                        min-height: 100vh;
-                    }
-                    
-                    .container {
-                        background: rgba(255, 255, 255, 0.1);
-                        border-radius: 10px;
-                        padding: 20px;
-                        max-width: 400px;
-                        width: 100%;
-                        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                        text-align: center;
-                    }
-                    
-                    .status {
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        margin-bottom: 20px;
-                    }
-                    
-                    .status-dot {
-                        width: 10px;
-                        height: 10px;
-                        border-radius: 50%;
-                        margin-right: 10px;
-                    }
-                    
-                    .connected {
-                        background: #10B981;
-                    }
-                    
-                    .disconnected {
-                        background: #EF4444;
-                        animation: pulse 1.5s infinite;
-                    }
-                    
-                    @keyframes pulse {
-                        0% { opacity: 1; }
-                        50% { opacity: 0.5; }
-                        100% { opacity: 1; }
-                    }
-                    
-                    .track-info {
-                        margin-bottom: 20px;
-                    }
-                    
-                    .track-title {
-                        font-size: 24px;
-                        font-weight: bold;
-                        margin-bottom: 5px;
-                    }
-                    
-                    .track-artist {
-                        font-size: 18px;
-                        color: #94a3b8;
-                    }
-                    
-                    .controls {
-                        display: flex;
-                        justify-content: space-between;
-                        margin-bottom: 20px;
-                    }
-                    
-                    button {
-                        background: #3B82F6;
-                        color: white;
-                        border: none;
-                        border-radius: 5px;
-                        padding: 10px 15px;
-                        cursor: pointer;
-                        font-size: 16px;
-                    }
-                    
-                    .play-pause {
-                        background: #10B981;
-                        font-weight: bold;
-                    }
-                    
-                    .message {
-                        margin-top: 20px;
-                        min-height: 20px;
-                    }
-                    
-                    .success {
-                        color: #10B981;
-                    }
-                    
-                    .error {
-                        color: #EF4444;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="status">
-                        <div id="status-dot" class="status-dot disconnected"></div>
-                        <span id="status-text">未连接到API</span>
-                    </div>
-                    
-                    <div class="track-info">
-                        <div id="track-title" class="track-title">等待连接...</div>
-                        <div id="track-artist" class="track-artist">未知艺术家</div>
-                    </div>
-                    
-                    <div class="controls">
-                        <button id="prev-btn">上一曲</button>
-                        <button id="play-pause-btn" class="play-pause">播放/暂停</button>
-                        <button id="next-btn">下一曲</button>
-                    </div>
-                    
-                    <div class="controls">
-                        <button id="volume-down-btn">音量-</button>
-                        <button id="mute-btn">静音</button>
-                        <button id="volume-up-btn">音量+</button>
-                    </div>
-                    
-                    <div id="message" class="message"></div>
-                </div>
-                
-                <script>
-                    const API_BASE = window.location.origin + '/api';
-                    let isPlaying = false;
-                    let isMuted = false;
-                    
-                    // 更新连接状态
-                    function updateConnectionStatus(connected) {
-                        const statusDot = document.getElementById('status-dot');
-                        const statusText = document.getElementById('status-text');
-                        
-                        if (connected) {
-                            statusDot.className = 'status-dot connected';
-                            statusText.textContent = '已连接到API';
-                        } else {
-                            statusDot.className = 'status-dot disconnected';
-                            statusText.textContent = '未连接到API';
-                        }
-                    }
-                    
-                    // 更新播放信息
-                    function updateNowPlaying(data) {
-                        document.getElementById('track-title').textContent = data.title || '未知标题';
-                        document.getElementById('track-artist').textContent = data.artist || '未知艺术家';
-                        
-                        isPlaying = data.isPlaying;
-                        document.getElementById('play-pause-btn').textContent = isPlaying ? '暂停' : '播放';
-                    }
-                    
-                    // 显示消息
-                    function showMessage(message, isError) {
-                        const messageEl = document.getElementById('message');
-                        messageEl.textContent = message;
-                        messageEl.className = isError ? 'message error' : 'message success';
-                        
-                        setTimeout(() => {
-                            messageEl.textContent = '';
-                        }, 3000);
-                    }
-                    
-                    // API请求
-                    async function apiRequest(endpoint) {
-                        try {
-                            const response = await fetch(API_BASE + endpoint);
-                            if (!response.ok) {
-                                throw new Error('请求失败: ' + response.status);
-                            }
-                            return await response.json();
-                        } catch (error) {
-                            showMessage(error.message, true);
-                            updateConnectionStatus(false);
-                            return null;
-                        }
-                    }
-                    
-                    // 获取当前播放信息
-                    async function fetchNowPlaying() {
-                        const data = await apiRequest('/now-playing');
-                        if (data) {
-                            updateConnectionStatus(true);
-                            updateNowPlaying(data);
-                        }
-                    }
-                    
-                    // 播放/暂停
-                    async function togglePlayPause() {
-                        const data = await apiRequest('/play-pause');
-                        if (data) {
-                            updateNowPlaying(data);
-                            showMessage(data.message);
-                        }
-                    }
-                    
-                    // 下一曲
-                    async function nextTrack() {
-                        const data = await apiRequest('/next-track');
-                        if (data) {
-                            fetchNowPlaying();
-                            showMessage(data.message);
-                        }
-                    }
-                    
-                    // 上一曲
-                    async function previousTrack() {
-                        const data = await apiRequest('/previous-track');
-                        if (data) {
-                            fetchNowPlaying();
-                            showMessage(data.message);
-                        }
-                    }
-                    
-                    // 音量增加
-                    async function volumeUp() {
-                        const data = await apiRequest('/volume/up');
-                        if (data) {
-                            showMessage(data.message);
-                        }
-                    }
-                    
-                    // 音量减少
-                    async function volumeDown() {
-                        const data = await apiRequest('/volume/down');
-                        if (data) {
-                            showMessage(data.message);
-                        }
-                    }
-                    
-                    // 静音
-                    async function toggleMute() {
-                        const data = await apiRequest('/mute');
-                        if (data) {
-                            isMuted = data.isMuted;
-                            document.getElementById('mute-btn').textContent = isMuted ? '取消静音' : '静音';
-                            showMessage(data.message);
-                        }
-                    }
-                    
-                    // 初始化
-                    function init() {
-                        // 绑定按钮事件
-                        document.getElementById('play-pause-btn').addEventListener('click', togglePlayPause);
-                        document.getElementById('prev-btn').addEventListener('click', previousTrack);
-                        document.getElementById('next-btn').addEventListener('click', nextTrack);
-                        document.getElementById('volume-up-btn').addEventListener('click', volumeUp);
-                        document.getElementById('volume-down-btn').addEventListener('click', volumeDown);
-                        document.getElementById('mute-btn').addEventListener('click', toggleMute);
-                        
-                        // 初始获取播放信息
-                        fetchNowPlaying();
-                        
-                        // 每5秒刷新一次
-                        setInterval(fetchNowPlaying, 5000);
-                    }
-                    
-                    // 启动应用
-                    document.addEventListener('DOMContentLoaded', init);
-                </script>
-            </body>
-            </html>
-            """.trimIndent())
         }
     }
 
