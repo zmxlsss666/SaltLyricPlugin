@@ -27,7 +27,7 @@ dependencies {
     // 最新JNA坐标（已迁移到net.java.dev.jna）
     implementation("net.java.dev.jna:jna:5.10.0")
     implementation("net.java.dev.jna:jna-platform:5.10.0")
-    
+    implementation("org.json:json:20210307")
     // Kotlin标准库
     implementation(kotlin("stdlib-jdk8"))
     
