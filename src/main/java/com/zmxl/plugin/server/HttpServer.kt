@@ -6,7 +6,8 @@ import com.sun.jna.platform.win32.User32
 import com.zmxl.plugin.control.SmtcController
 import com.zmxl.plugin.playback.PlaybackStateHolder
 import org.eclipse.jetty.server.Server
-import org.eclipse.jetty.servlet.*
+import org.eclipse.jetty.servlet.ServletContextHandler
+import org.eclipse.jetty.servlet.ServletHolder
 import jakarta.servlet.http.HttpServlet
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -302,24 +303,24 @@ class HttpServer(private val port: Int) {
         context.contextPath = "/"
         server.handler = context
 
-        // 注册API端点
-        context.addServlet(NowPlayingServlet::class.java, "/api/now-playing")
-        context.addServlet(PlayPauseServlet::class.java, "/api/play-pause")
-        context.addServlet(NextTrackServlet::class.java, "/api/next-track")
-        context.addServlet(PreviousTrackServlet::class.java, "/api/previous-track")
-        context.addServlet(VolumeUpServlet::class.java, "/api/volume/up")
-        context.addServlet(VolumeDownServlet::class.java, "/api/volume/down")
-        context.addServlet(MuteServlet::class.java, "/api/mute")
+        // 创建ServletHolder并注册API端点
+        context.addServlet(ServletHolder(NowPlayingServlet()), "/api/now-playing")
+        context.addServlet(ServletHolder(PlayPauseServlet()), "/api/play-pause")
+        context.addServlet(ServletHolder(NextTrackServlet()), "/api/next-track")
+        context.addServlet(ServletHolder(PreviousTrackServlet()), "/api/previous-track")
+        context.addServlet(ServletHolder(VolumeUpServlet()), "/api/volume/up")
+        context.addServlet(ServletHolder(VolumeDownServlet()), "/api/volume/down")
+        context.addServlet(ServletHolder(MuteServlet()), "/api/mute")
 
         // 处理所有其他请求，返回控制界面
-        context.addServlet(object : HttpServlet() {
+        context.addServlet(ServletHolder(object : HttpServlet() {
             @Throws(IOException::class)
             override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
                 resp.contentType = "text/html;charset=UTF-8"
                 resp.characterEncoding = "UTF-8"
                 resp.writer.write(controlHtml)
             }
-        }, "/*")
+        }), "/*")
 
         try {
             server.start()
