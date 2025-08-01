@@ -615,6 +615,16 @@ class HttpServer(private val port: Int) {
                 )))
             }
         }
+        
+        // 辅助方法：获取URL内容
+        private fun getUrlContent(urlString: String): String {
+            val url = URL(urlString)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            return conn.inputStream.bufferedReader().use { it.readText() }
+        }
     }
 
     /**
@@ -663,16 +673,6 @@ class HttpServer(private val port: Int) {
         } catch (e: Exception) {
             println("发送媒体键事件失败: ${e.message}")
         }
-    }
-
-    // 辅助方法：获取URL内容
-    private fun getUrlContent(urlString: String): String {
-        val url = URL(urlString)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "GET"
-        conn.connectTimeout = 5000
-        conn.readTimeout = 5000
-        return conn.inputStream.bufferedReader().use { it.readText() }
     }
 
     // JNA接口
