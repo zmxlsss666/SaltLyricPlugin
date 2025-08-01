@@ -302,6 +302,9 @@ class HttpServer(private val port: Int) {
         val context = ServletContextHandler(ServletContextHandler.SESSIONS)
         context.contextPath = "/"
         server.handler = context
+        
+        // 将HttpServer实例存入ServletContext，以便在Servlet中访问
+        context.setAttribute("httpServer", this)
 
         // 创建ServletHolder并注册API端点
         context.addServlet(ServletHolder(NowPlayingServlet()), "/api/now-playing")
@@ -376,6 +379,7 @@ class HttpServer(private val port: Int) {
             resp.contentType = "application/json;charset=UTF-8"
             
             try {
+                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xB3)
                 
@@ -408,6 +412,8 @@ class HttpServer(private val port: Int) {
             
             try {
                 SmtcController.handleNextTrack()
+                
+                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xB0)
                 
@@ -441,6 +447,8 @@ class HttpServer(private val port: Int) {
             
             try {
                 SmtcController.handlePreviousTrack()
+                
+                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xB1)
                 
@@ -474,6 +482,8 @@ class HttpServer(private val port: Int) {
             
             try {
                 SmtcController.handleVolumeUp()
+                
+                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xAF)
                 
@@ -506,6 +516,8 @@ class HttpServer(private val port: Int) {
             
             try {
                 SmtcController.handleVolumeDown()
+                
+                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xAE)
                 
@@ -538,6 +550,8 @@ class HttpServer(private val port: Int) {
             
             try {
                 SmtcController.handleMute()
+                
+                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xAD)
                 
@@ -564,7 +578,7 @@ class HttpServer(private val port: Int) {
     /**
      * 发送系统媒体键事件
      */
-    private fun sendMediaKeyEvent(virtualKeyCode: Int) {
+    fun sendMediaKeyEvent(virtualKeyCode: Int) {
         try {
             val user32 = User32Ex.INSTANCE
             user32.keybd_event(virtualKeyCode.toByte(), 0, 0, 0)
