@@ -318,6 +318,7 @@ class HttpServer(private val port: Int) {
         context.addServlet(ServletHolder(MuteServlet()), "/api/mute")
         context.addServlet(ServletHolder(LyricServlet()), "/api/lyric")
         context.addServlet(ServletHolder(PicServlet()), "/api/pic")
+        context.addServlet(ServletHolder(CurrentPositionServlet()), "/api/current-position")
 
         // 处理所有其他请求，返回控制界面
         context.addServlet(ServletHolder(object : HttpServlet() {
@@ -658,6 +659,36 @@ class HttpServer(private val port: Int) {
                 resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
                 resp.writer.write("获取封面失败: ${e.message}")
             }
+        }
+    }
+    
+    /**
+     * 当前播放位置API
+     */
+    class CurrentPositionServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            val position = PlaybackStateHolder.currentPosition
+            val formatted = formatPosition(position)
+            
+            val response = mapOf(
+                "status" to "success",
+                "position" to position,
+                "formatted" to formatted
+            )
+            
+            resp.writer.write(Gson().toJson(response))
+        }
+        
+        // 格式化位置为分钟:秒:毫秒
+        private fun formatPosition(position: Long): String {
+            val minutes = position / 60000
+            val seconds = (position % 60000) / 1000
+            val millis = position % 1000
+            
+            return String.format("%02d:%02d:%03d", minutes, seconds, millis)
         }
     }
 
