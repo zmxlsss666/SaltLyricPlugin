@@ -684,8 +684,9 @@ class HttpServer(private val port: Int) {
         
         // 格式化位置为分钟:秒:毫秒
         private fun formatPosition(position: Long): String {
-            val minutes = position / 60000
-            val seconds = (position % 60000) / 1000
+            val totalSeconds = position / 1000
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
             val millis = position % 1000
             
             return String.format("%02d:%02d:%03d", minutes, seconds, millis)
