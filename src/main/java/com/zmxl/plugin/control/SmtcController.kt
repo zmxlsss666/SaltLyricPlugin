@@ -88,7 +88,7 @@ object SmtcController {
     }
 
     private fun startMessageLoop() {
-        messageLoopThread = Thread {
+        messageLoopThread = Thread { 
             val msg = WinUser.MSG()
             while (User32.INSTANCE.GetMessage(msg, null, 0, 0) != 0) {
                 User32.INSTANCE.TranslateMessage(msg)
@@ -172,22 +172,21 @@ object SmtcController {
 
     // 改为public以便HttpServer访问
     fun handleVolumeUp() {
-        val newVolume = (PlaybackStateHolder.volume + 0.1f).coerceIn(0.0f, 1.0f)
+        val newVolume = minOf(PlaybackStateHolder.volume + 5, 100)
         playbackExtension.setVolume(newVolume)
         PlaybackStateHolder.volume = newVolume // 同步音量状态
     }
 
     // 改为public以便HttpServer访问
     fun handleVolumeDown() {
-        val newVolume = (PlaybackStateHolder.volume - 0.1f).coerceIn(0.0f, 1.0f)
+        val newVolume = maxOf(PlaybackStateHolder.volume - 5, 0)
         playbackExtension.setVolume(newVolume)
         PlaybackStateHolder.volume = newVolume // 同步音量状态
     }
 
     fun handleMute() {
-        val newVolume = if (PlaybackStateHolder.volume > 0) 0.0f else 1.0f
-        playbackExtension.setVolume(newVolume)
-        PlaybackStateHolder.volume = newVolume // 同步音量状态
+        PlaybackStateHolder.toggleMute()
+        playbackExtension.setVolume(PlaybackStateHolder.volume)
     }
 
     fun shutdown() {
