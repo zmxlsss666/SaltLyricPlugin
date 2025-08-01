@@ -331,7 +331,7 @@ curl http://localhost:35373/api/lyric
 ```
 ### 9. 封面
 
-- **端点**：`/api/lyric`
+- **端点**：`/api/pic`
 
 - **方法**：`GET`
 
@@ -352,7 +352,7 @@ curl http://localhost:35373/api/pic
 ```
 ### 10. 播放进度
 
-- **端点**：`/api/lyric`
+- **端点**：`/api/current-position`
 
 - **方法**：`GET`
 
