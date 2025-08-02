@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SaltPlayer Web 控制器 - 流畅版</title>
+    <title>SaltPlayer控制器</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -14,7 +14,7 @@
         }
         
         body {
-            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            background: linear-gradient(135deg, #0c0c1d, #161632, #1a1a40);
             color: #fff;
             min-height: 100vh;
             display: flex;
@@ -33,48 +33,61 @@
         }
         
         .player-card {
-            background: rgba(30, 30, 46, 0.8);
+            background: rgba(25, 25, 45, 0.85);
             border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
             overflow: hidden;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: transform 0.3s ease;
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .player-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(143, 148, 251, 0.1) 0%, transparent 70%);
+            z-index: -1;
+            pointer-events: none;
         }
         
         .player-header {
             display: flex;
             padding: 30px;
-            gap: 25px;
+            gap: 30px;
             position: relative;
         }
         
-        .album-art {
-            flex: 0 0 200px;
-            height: 200px;
-            border-radius: 10px;
+        .album-art-container {
+            flex: 0 0 220px;
+            height: 220px;
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
-            background: linear-gradient(45deg, #4e54c8, #8f94fb);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+            background: linear-gradient(45deg, #3a3a6a, #5353a3);
             display: flex;
             justify-content: center;
             align-items: center;
             position: relative;
         }
         
-        .album-art img {
+        .album-art {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            display: none;
-            border-radius: 10px;
+            display: block;
+            border-radius: 12px;
             transition: opacity 0.5s ease;
         }
         
-        .album-art .music-icon {
+        .music-icon {
+            position: absolute;
             font-size: 80px;
-            color: rgba(255, 255, 255, 0.2);
-            transition: opacity 0.3s ease;
+            color: rgba(255, 255, 255, 0.15);
         }
         
         .track-info {
@@ -85,53 +98,58 @@
         }
         
         .track-title {
-            font-size: 32px;
+            font-size: 34px;
             font-weight: 700;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             letter-spacing: 0.5px;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-            transition: all 0.3s ease;
+            text-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
             min-height: 40px;
+            background: linear-gradient(90deg, #fff, #d0d1ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            color: transparent;
         }
         
         .track-artist {
-            font-size: 20px;
-            color: #8a8dcc;
+            font-size: 22px;
+            color: #a0a3e0;
             margin-bottom: 30px;
             font-weight: 500;
-            transition: all 0.3s ease;
-            min-height: 24px;
+            min-height: 26px;
         }
         
         .progress-container {
-            margin: 15px 0;
+            margin: 20px 0;
         }
         
         .progress-bar {
-            height: 6px;
+            height: 8px;
             background: rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
+            border-radius: 4px;
             overflow: hidden;
             position: relative;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
             cursor: pointer;
         }
         
         .progress {
             height: 100%;
-            background: linear-gradient(to right, #8f94fb, #4e54c8);
-            border-radius: 3px;
+            background: linear-gradient(to right, #8f94fb, #6a6fc7);
+            border-radius: 4px;
             width: 30%;
             position: relative;
-            transition: width 0.3s linear;
+            transition: width 0.2s linear;
             will-change: width;
+            box-shadow: 0 0 10px rgba(143, 148, 251, 0.5);
         }
         
         .progress-time {
             display: flex;
             justify-content: space-between;
-            font-size: 14px;
-            color: #aaa;
+            font-size: 15px;
+            color: #bbb;
+            font-weight: 500;
         }
         
         .controls {
@@ -142,90 +160,85 @@
         }
         
         .control-btn {
-            width: 50px;
-            height: 50px;
+            width: 52px;
+            height: 52px;
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.1);
             border: none;
             color: #fff;
-            font-size: 20px;
+            font-size: 22px;
             display: flex;
             justify-content: center;
             align-items: center;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 5px 12px rgba(0, 0, 0, 0.25);
         }
         
         .control-btn:hover {
             background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
+            transform: scale(1.08);
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
         }
         
         .control-btn:active {
-            transform: scale(0.95);
+            transform: scale(0.96);
         }
         
         .play-btn {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, #8f94fb, #4e54c8);
-            font-size: 24px;
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #8f94fb, #6a6fc7);
+            font-size: 26px;
+            box-shadow: 0 6px 18px rgba(143, 148, 251, 0.4);
         }
         
         .volume-container {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             margin-left: auto;
             background: rgba(255, 255, 255, 0.1);
-            padding: 5px 15px;
+            padding: 6px 18px;
             border-radius: 30px;
-            transition: background 0.3s ease;
         }
         
         .volume-slider {
             width: 100px;
             -webkit-appearance: none;
-            height: 4px;
-            border-radius: 2px;
+            height: 5px;
+            border-radius: 3px;
             background: rgba(255, 255, 255, 0.2);
             outline: none;
-            transition: opacity 0.3s ease;
         }
         
         .volume-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
             background: #fff;
             cursor: pointer;
-            box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
-            transition: transform 0.2s ease;
-        }
-        
-        .volume-slider::-webkit-slider-thumb:hover {
-            transform: scale(1.2);
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
         }
         
         .volume-btn {
             background: transparent;
-            font-size: 18px;
+            font-size: 20px;
         }
         
         .lyrics-container {
             padding: 30px;
-            background: rgba(20, 20, 36, 0.6);
+            background: rgba(15, 15, 30, 0.5);
             border-top: 1px solid rgba(255, 255, 255, 0.05);
             max-height: 300px;
             overflow-y: auto;
             scrollbar-width: thin;
-            scrollbar-color: #4e54c8 transparent;
+            scrollbar-color: #6a6fc7 transparent;
         }
         
         .lyrics-container::-webkit-scrollbar {
-            width: 6px;
+            width: 8px;
         }
         
         .lyrics-container::-webkit-scrollbar-track {
@@ -233,22 +246,24 @@
         }
         
         .lyrics-container::-webkit-scrollbar-thumb {
-            background-color: #4e54c8;
+            background-color: #6a6fc7;
             border-radius: 10px;
         }
         
         .lyrics-title {
-            font-size: 18px;
+            font-size: 19px;
             color: #8a8dcc;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
         }
         
         .lyrics-content {
-            line-height: 1.8;
-            font-size: 18px;
+            line-height: 1.9;
+            font-size: 19px;
             text-align: center;
             color: rgba(255, 255, 255, 0.7);
             min-height: 150px;
@@ -256,14 +271,14 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            transition: all 0.3s ease;
+            padding: 20px 0;
         }
         
         .lyrics-content p {
-            margin: 10px 0;
+            margin: 12px 0;
             transition: all 0.3s ease;
-            padding: 5px 15px;
-            border-radius: 5px;
+            padding: 10px 30px;
+            border-radius: 8px;
             width: 100%;
             opacity: 0.7;
             transform: scale(0.95);
@@ -271,20 +286,20 @@
         
         .lyrics-content .current-lyric {
             color: #fff;
-            font-size: 22px;
+            font-size: 24px;
             font-weight: bold;
-            background: rgba(143, 148, 251, 0.15);
+            background: rgba(143, 148, 251, 0.2);
             transform: scale(1.05);
             opacity: 1;
-            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(143, 148, 251, 0.2);
         }
         
         .status-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 30px;
-            background: rgba(15, 15, 30, 0.7);
+            padding: 16px 30px;
+            background: rgba(10, 10, 20, 0.7);
             border-top: 1px solid rgba(255, 255, 255, 0.05);
             font-size: 14px;
             color: #aaa;
@@ -293,14 +308,7 @@
         .status-item {
             display: flex;
             align-items: center;
-            gap: 8px;
-        }
-        
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            color: #8a8dcc;
+            gap: 10px;
         }
         
         .error {
@@ -311,39 +319,43 @@
             border-radius: 8px;
             margin: 20px;
             text-align: center;
-            animation: fadeIn 0.3s ease;
+            animation: fadeIn 0.4s ease;
+            border: 1px solid rgba(255, 107, 107, 0.2);
         }
         
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
+            from { opacity: 0; transform: translateY(-15px); }
             to { opacity: 1; transform: translateY(0); }
         }
         
-        .smooth-transition {
-            transition: all 0.3s ease;
+        .visualizer {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            height: 60px;
+            gap: 4px;
+            margin-top: 20px;
+            opacity: 0.7;
         }
         
-        .performance-indicator {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 5px 10px;
-            border-radius: 10px;
-            font-size: 12px;
-            color: #8a8dcc;
+        .bar {
+            width: 5px;
+            background: linear-gradient(to top, #8f94fb, #6a6fc7);
+            border-radius: 3px;
+            height: 10px;
+            transition: height 0.15s ease-out;
         }
         
         @media (max-width: 768px) {
             .player-header {
                 flex-direction: column;
-                padding: 20px;
+                padding: 25px;
             }
             
-            .album-art {
+            .album-art-container {
                 width: 100%;
-                max-width: 200px;
-                margin: 0 auto;
+                max-width: 220px;
+                margin: 0 auto 25px;
             }
             
             .track-info {
@@ -357,44 +369,71 @@
             .volume-container {
                 margin-left: 0;
             }
+            
+            .track-title {
+                font-size: 28px;
+            }
+            
+            .track-artist {
+                font-size: 20px;
+            }
         }
         
-        .cover-container {
-            position: relative;
-            perspective: 1000px;
+        .pulse {
+            animation: pulse 2s infinite;
         }
         
-        .cover-container::before {
-            content: '';
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(143, 148, 251, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(143, 148, 251, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(143, 148, 251, 0); }
+        }
+        
+        .lyric-guide {
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: radial-gradient(circle at center, rgba(143, 148, 251, 0.2) 0%, transparent 70%);
-            border-radius: 10px;
-            z-index: -1;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(143, 148, 251, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            color: #fff;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+        
+        .api-status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: #4caf50;
+        }
+        
+        .api-status-indicator.connecting {
+            background: #ffc107;
+        }
+        
+        .api-status-indicator.error {
+            background: #f44336;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="player-card">
-            <div class="performance-indicator" id="performance-indicator">
-                帧率: <span id="fps-counter">60</span> FPS
-            </div>
-            
             <div class="player-header">
-                <div class="cover-container">
-                    <div class="album-art" id="album-art">
-                        <i class="fas fa-music music-icon"></i>
-                        <img id="album-cover" src="" alt="Album Cover">
-                    </div>
+                <div class="album-art-container">
+                    <i class="fas fa-music music-icon"></i>
+                    <img id="album-cover" class="album-art" src="" alt="Album Cover">
                 </div>
                 
                 <div class="track-info">
-                    <h1 class="track-title" id="track-title">歌曲标题</h1>
-                    <p class="track-artist" id="track-artist">艺术家</p>
+                    <h1 class="track-title" id="track-title">正在加载中...</h1>
+                    <p class="track-artist" id="track-artist">SaltPlayer</p>
                     
                     <div class="progress-container">
                         <div class="progress-bar" id="progress-container">
@@ -405,6 +444,8 @@
                             <span id="total-time">00:00</span>
                         </div>
                     </div>
+                    
+                    <div class="visualizer" id="visualizer"></div>
                     
                     <div class="controls">
                         <button class="control-btn" id="prev-btn" title="上一曲">
@@ -427,19 +468,23 @@
                 </div>
             </div>
             
-            <div class="lyrics-container">
+            <div class="lyrics-container" id="lyrics-container">
+                <div class="lyric-guide" id="lyric-guide">将自动滚动到当前歌词</div>
                 <div class="lyrics-title">
                     <i class="fas fa-music"></i> 歌词
                 </div>
                 <div class="lyrics-content" id="lyrics-content">
-                    <p>正在加载歌词...</p>
+                    <p>加载歌词中...</p>
                 </div>
             </div>
             
             <div class="status-bar">
                 <div class="status-item">
                     <i class="fas fa-plug"></i>
-                    <span id="api-status">SaltPlayer API 连接中...</span>
+                    <span id="api-status">
+                        <span class="api-status-indicator" id="api-status-indicator"></span>
+                        <span>SaltPlayer API 连接中...</span>
+                    </span>
                 </div>
                 <div class="status-item">
                     <i class="fas fa-clock"></i>
@@ -448,26 +493,20 @@
             </div>
         </div>
         
-        <div class="loading" id="loading">
-            <i class="fas fa-spinner fa-spin"></i> 正在加载数据...
-        </div>
-        
         <div class="error" id="error-message"></div>
     </div>
 
     <script>
         // 全局变量
         let currentLyrics = [];
-        let lyricElements = [];
         let currentPosition = 0;
         let updateInterval;
         let lyricsUpdateInterval;
         let currentTrackId = '';
         let isPlaying = false;
         let lastUpdateTime = 0;
-        let lastFrameTime = 0;
-        let frameCount = 0;
-        let fps = 60;
+        let userScrolled = false;
+        let scrollTimeout = null;
         
         // API端点
         const API_BASE = '/api';
@@ -488,33 +527,52 @@
         const volumeSlider = document.getElementById('volume-slider');
         const lyricsContent = document.getElementById('lyrics-content');
         const albumCover = document.getElementById('album-cover');
-        const albumArt = document.getElementById('album-art');
         const updateTime = document.getElementById('update-time');
-        const loading = document.getElementById('loading');
+        const lyricsContainer = document.getElementById('lyrics-container');
+        const lyricGuide = document.getElementById('lyric-guide');
+        const visualizer = document.getElementById('visualizer');
         const errorMessage = document.getElementById('error-message');
         const apiStatus = document.getElementById('api-status');
-        const fpsCounter = document.getElementById('fps-counter');
-        const performanceIndicator = document.getElementById('performance-indicator');
+        const apiStatusIndicator = document.getElementById('api-status-indicator');
         
-        // 帧率计数器
-        function updateFPS(now) {
-            frameCount++;
-            
-            if (now >= lastFrameTime + 1000) {
-                fps = Math.round(frameCount * 1000 / (now - lastFrameTime));
-                fpsCounter.textContent = fps;
-                frameCount = 0;
-                lastFrameTime = now;
-                
-                // 当帧率低于50时显示警告
-                if (fps < 50) {
-                    performanceIndicator.style.color = '#ff6b6b';
-                } else {
-                    performanceIndicator.style.color = '#8a8dcc';
-                }
+        // 更新API状态指示器
+        function updateApiStatus(status) {
+            apiStatusIndicator.className = 'api-status-indicator';
+            if (status === 'connected') {
+                apiStatusIndicator.classList.add('connected');
+                apiStatus.querySelector('span:last-child').textContent = 'SaltPlayer API 已连接';
+            } else if (status === 'error') {
+                apiStatusIndicator.classList.add('error');
+                apiStatus.querySelector('span:last-child').textContent = 'SaltPlayer API 连接失败';
+            } else {
+                apiStatusIndicator.classList.add('connecting');
+                apiStatus.querySelector('span:last-child').textContent = 'SaltPlayer API 连接中...';
             }
+        }
+        
+        // 初始化可视化器
+        function initVisualizer() {
+            visualizer.innerHTML = '';
+            for (let i = 0; i < 32; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'bar';
+                bar.style.height = `${Math.random() * 50 + 10}px`;
+                bar.style.transition = 'height 0.15s ease-out';
+                visualizer.appendChild(bar);
+            }
+        }
+        
+        // 更新可视化器
+        function updateVisualizer() {
+            if (!isPlaying) return;
             
-            requestAnimationFrame(updateFPS);
+            const bars = visualizer.querySelectorAll('.bar');
+            bars.forEach(bar => {
+                const change = Math.random() * 15 - 7.5;
+                let newHeight = parseFloat(bar.style.height) + change;
+                newHeight = Math.max(10, Math.min(60, newHeight));
+                bar.style.height = `${newHeight}px`;
+            });
         }
         
         // 格式化毫秒为 MM:SS
@@ -531,8 +589,10 @@
             try {
                 const response = await fetch(`${API_BASE}/now-playing`);
                 if (!response.ok) throw new Error('网络响应不正常');
+                updateApiStatus('connected');
                 return await response.json();
             } catch (error) {
+                updateApiStatus('error');
                 showError(`无法获取当前播放信息: ${error.message}`);
                 return null;
             }
@@ -591,14 +651,7 @@
         
         // 渲染歌词
         function renderLyrics(lyrics) {
-            // 避免不必要的DOM操作
-            if (lyricsContent.children.length > 0 && 
-                lyricsContent.children.length === lyrics.length) {
-                return;
-            }
-            
             lyricsContent.innerHTML = '';
-            lyricElements = [];
             
             if (lyrics.length === 0) {
                 lyricsContent.innerHTML = '<p>暂无歌词</p>';
@@ -611,7 +664,6 @@
                 const p = document.createElement('p');
                 p.textContent = lyric.text;
                 fragment.appendChild(p);
-                lyricElements.push(p);
             });
             
             lyricsContent.appendChild(fragment);
@@ -619,9 +671,7 @@
         
         // 更新歌词显示
         function updateLyricsDisplay(position) {
-            if (!currentLyrics.length || !lyricElements.length) {
-                return;
-            }
+            if (!currentLyrics.length) return;
             
             // 找到当前时间对应的歌词行
             let currentIndex = -1;
@@ -636,44 +686,67 @@
                 currentIndex = currentLyrics.length - 1;
             }
             
-            // 更新高亮
-            lyricElements.forEach((el, index) => {
-                if (index === currentIndex && !el.classList.contains('current-lyric')) {
-                    el.classList.add('current-lyric');
-                } else if (index !== currentIndex && el.classList.contains('current-lyric')) {
-                    el.classList.remove('current-lyric');
-                }
-            });
-            
-            // 滚动到当前歌词位置
-            if (currentIndex >= 0 && lyricElements[currentIndex]) {
-                const currentElement = lyricElements[currentIndex];
-                const container = lyricsContent;
-                const containerHeight = container.clientHeight;
-                const elementTop = currentElement.offsetTop;
-                const elementHeight = currentElement.offsetHeight;
-                
-                // 平滑滚动
-                container.scrollTo({
-                    top: elementTop - containerHeight / 2 + elementHeight / 2,
-                    behavior: 'smooth'
-                });
+            // 移除之前的高亮
+            const currentHighlighted = lyricsContent.querySelector('.current-lyric');
+            if (currentHighlighted) {
+                currentHighlighted.classList.remove('current-lyric');
             }
+            
+            // 添加新的高亮
+            if (currentIndex >= 0 && lyricsContent.children[currentIndex]) {
+                lyricsContent.children[currentIndex].classList.add('current-lyric');
+                
+                // 如果用户没有手动滚动，则滚动到当前歌词
+                if (!userScrolled) {
+                    scrollToCurrentLyric(currentIndex);
+                }
+            }
+        }
+        
+        // 滚动到当前歌词
+        function scrollToCurrentLyric(currentIndex) {
+            if (currentIndex < 0 || !lyricsContent.children[currentIndex]) return;
+            
+            const currentElement = lyricsContent.children[currentIndex];
+            const container = lyricsContent;
+            const containerHeight = container.clientHeight;
+            const elementTop = currentElement.offsetTop;
+            const elementHeight = currentElement.offsetHeight;
+            
+            // 平滑滚动
+            container.scrollTo({
+                top: elementTop - containerHeight / 2 + elementHeight / 2,
+                behavior: 'smooth'
+            });
+        }
+        
+        // 处理歌词滚动事件
+        function handleLyricsScroll() {
+            userScrolled = true;
+            
+            // 显示引导提示
+            lyricGuide.style.opacity = '1';
+            
+            // 清除之前的定时器
+            if (scrollTimeout) clearTimeout(scrollTimeout);
+            
+            // 设置新的定时器，2秒后恢复自动滚动
+            scrollTimeout = setTimeout(() => {
+                userScrolled = false;
+                lyricGuide.style.opacity = '0';
+                
+                // 找到当前高亮的歌词并滚动到它
+                const currentLyric = lyricsContent.querySelector('.current-lyric');
+                if (currentLyric) {
+                    const index = Array.from(lyricsContent.children).indexOf(currentLyric);
+                    scrollToCurrentLyric(index);
+                }
+            }, 2000);
         }
         
         // 更新播放器界面
         async function updatePlayer() {
             try {
-                const now = Date.now();
-                // 限制更新频率
-                if (now - lastUpdateTime < 1000) {
-                    return;
-                }
-                lastUpdateTime = now;
-                
-                loading.style.display = 'block';
-                errorMessage.style.display = 'none';
-                
                 const data = await getNowPlaying();
                 if (!data) return;
                 
@@ -683,20 +756,19 @@
                     // 歌曲变化，重置歌词
                     currentTrackId = newTrackId;
                     currentLyrics = [];
-                    lyricsContent.innerHTML = '<p>正在加载歌词...</p>';
-                    lyricElements = [];
+                    lyricsContent.innerHTML = '<p>加载歌词中...</p>';
+                    
+                    // 获取新歌词
+                    const lyricsText = await getLyrics();
+                    if (lyricsText) {
+                        currentLyrics = parseLyrics(lyricsText);
+                        renderLyrics(currentLyrics);
+                    }
                 }
                 
-                // 更新歌曲信息 - 使用requestAnimationFrame避免布局抖动
-                requestAnimationFrame(() => {
-                    if (trackTitle.textContent !== (data.title || '未知标题')) {
-                        trackTitle.textContent = data.title || '未知标题';
-                    }
-                    
-                    if (trackArtist.textContent !== (data.artist || '未知艺术家')) {
-                        trackArtist.textContent = data.artist || '未知艺术家';
-                    }
-                });
+                // 更新歌曲信息
+                trackTitle.textContent = data.title || '未知标题';
+                trackArtist.textContent = data.artist || '未知艺术家';
                 
                 // 更新播放状态
                 isPlaying = data.isPlaying;
@@ -710,44 +782,24 @@
                 currentPosition = data.position || 0;
                 const duration = data.duration || 300000;
                 const positionPercent = Math.min(100, (currentPosition / duration) * 100);
-                
-                // 使用CSS transition平滑更新进度条
                 progressBar.style.width = `${positionPercent}%`;
                 
                 // 更新时间显示
-                requestAnimationFrame(() => {
-                    currentTime.textContent = formatTime(currentPosition);
-                    totalTime.textContent = formatTime(duration);
-                });
+                currentTime.textContent = formatTime(currentPosition);
+                totalTime.textContent = formatTime(duration);
                 
                 // 更新封面
                 await updateCover();
                 
-                // 更新歌词
-                if (!currentLyrics.length) {
-                    const lyricsText = await getLyrics();
-                    currentLyrics = parseLyrics(lyricsText);
-                    renderLyrics(currentLyrics);
-                }
+                // 更新歌词显示
+                updateLyricsDisplay(currentPosition);
                 
                 // 更新时间戳
-                const timeStr = new Date().toLocaleTimeString();
-                if (updateTime.textContent !== `最后更新: ${timeStr}`) {
-                    updateTime.textContent = `最后更新: ${timeStr}`;
-                }
+                const now = new Date();
+                updateTime.textContent = `最后更新: ${now.toLocaleTimeString()}`;
                 
-                // 更新API连接状态
-                apiStatus.textContent = "SaltPlayer API 已连接";
-                apiStatus.style.color = "#8a8dcc";
-                
-                loading.style.display = 'none';
             } catch (error) {
                 showError(`更新播放器失败: ${error.message}`);
-                loading.style.display = 'none';
-                
-                // 更新API连接状态
-                apiStatus.textContent = "SaltPlayer API 连接失败";
-                apiStatus.style.color = "#ff6b6b";
             }
         }
         
@@ -757,19 +809,9 @@
                 const coverUrl = `${API_BASE}/pic?t=${Date.now()}`;
                 if (albumCover.src !== coverUrl) {
                     albumCover.src = coverUrl;
-                    albumCover.style.display = 'block';
-                    albumCover.previousElementSibling.style.opacity = '0';
-                    
-                    // 添加淡入效果
-                    setTimeout(() => {
-                        albumCover.previousElementSibling.style.display = 'none';
-                    }, 300);
                 }
             } catch (error) {
                 console.error('更新封面失败:', error);
-                albumCover.style.display = 'none';
-                albumCover.previousElementSibling.style.display = 'block';
-                albumCover.previousElementSibling.style.opacity = '1';
             }
         }
         
@@ -858,39 +900,37 @@
         });
         
         // 进度条点击事件
-        progressContainer.addEventListener('click', (e) => {
+        progressContainer.addEventListener('click', async (e) => {
             const rect = progressContainer.getBoundingClientRect();
             const percent = (e.clientX - rect.left) / rect.width;
-            const duration = parseInt(totalTime.textContent.split(':')[0]) * 60000 + 
-                             parseInt(totalTime.textContent.split(':')[1]) * 1000;
+            
+            // 获取当前歌曲时长
+            const data = await getNowPlaying();
+            if (!data) return;
+            
+            const duration = data.duration || 300000;
             currentPosition = percent * duration;
+            
+            // 更新进度条
             progressBar.style.width = `${percent * 100}%`;
             currentTime.textContent = formatTime(currentPosition);
         });
         
+        // 歌词容器滚动事件
+        lyricsContainer.addEventListener('scroll', handleLyricsScroll);
+        
         // 初始化播放器
         async function initPlayer() {
-            // 启动帧率计数器
-            requestAnimationFrame(updateFPS);
+            // 初始化可视化器
+            initVisualizer();
             
+            // 初始更新
             await updatePlayer();
             
-            // 设置定时器更新播放信息（降低频率）
+            // 设置定时器更新播放信息
             updateInterval = setInterval(() => {
-                requestAnimationFrame(() => {
-                    updatePlayer();
-                });
-            }, 1000);
-            
-            // 设置定时器更新歌词
-            lyricsUpdateInterval = setInterval(() => {
-                // 模拟播放进度前进
-                if (isPlaying) {
-                    currentPosition += 1000;
-                    requestAnimationFrame(() => {
-                        updateLyricsDisplay(currentPosition);
-                    });
-                }
+                updatePlayer();
+                updateVisualizer();
             }, 1000);
         }
         
