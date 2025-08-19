@@ -2,12 +2,9 @@ package com.zmxl.plugin.playback
 
 import com.xuncorp.spw.workshop.api.PlaybackExtensionPoint
 import com.xuncorp.spw.workshop.api.WorkshopApi
-import com.xuncorp.spw.workshop.api.PlaybackExtensionPoint.MediaItem
-import com.xuncorp.spw.workshop.api.PlaybackExtensionPoint.State
 import org.json.JSONArray
 import org.json.JSONObject
 import org.pf4j.Extension
-import java.lang.reflect.Method
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -15,108 +12,28 @@ import java.util.Timer
 import java.util.TimerTask
 import kotlin.concurrent.thread
 
-object PlaybackStateHolder {
-    @Volatile
-    var currentMedia: MediaItem? = null
-    @Volatile
-    var isPlaying: Boolean = false
-    @Volatile
-    var currentState: State = State.Idle
-    @Volatile
-    var volume: Int = 100 // 音量范围改为0-100整数
-    @Volatile
-    var lyricUrl: String? = null
-    @Volatile
-    var coverUrl: String? = null
-    
-    // 播放进度跟踪
-    @Volatile
-    var currentPosition: Long = 0L
-    private var positionUpdateTimer: Timer? = null
-    private var lastPositionUpdateTime: Long = 0
-    private var previousVolumeBeforeMute: Int = 100 // 静音前的音量
-    
-    // 开始更新播放进度
-    fun startPositionUpdate() {
-        stopPositionUpdate() // 确保之前的定时器已停止
-        
-        positionUpdateTimer = Timer(true) // 使用守护线程
-        lastPositionUpdateTime = System.currentTimeMillis()
-        
-        positionUpdateTimer?.scheduleAtFixedRate(object : TimerTask() {
-            override fun run() {
-                if (isPlaying) {
-                    val now = System.currentTimeMillis()
-                    val elapsed = now - lastPositionUpdateTime
-                    currentPosition += elapsed
-                    lastPositionUpdateTime = now
-                }
-            }
-        }, 0, 100) // 每100毫秒更新一次
-    }
-    
-    // 停止更新播放进度
-    fun stopPositionUpdate() {
-        positionUpdateTimer?.cancel()
-        positionUpdateTimer = null
-    }
-    
-    // 设置播放位置（如跳转时）
-    fun setPosition(position: Long) {
-        currentPosition = position
-        lastPositionUpdateTime = System.currentTimeMillis()
-    }
-    
-    // 重置播放位置
-    fun resetPosition() {
-        currentPosition = 0L
-        lastPositionUpdateTime = System.currentTimeMillis()
-    }
-    
-    // 静音/取消静音
-    fun toggleMute() {
-        if (volume > 0) {
-            // 保存当前音量并静音
-            previousVolumeBeforeMute = volume
-            volume = 0
-        } else {
-            // 恢复静音前的音量
-            volume = previousVolumeBeforeMute
-        }
-    }
-}
-
 @Extension
 class SpwPlaybackExtension : PlaybackExtensionPoint {
-    // 使用反射获取SPW内部API的方法
-    private val nextTrackMethod: Method? by lazy {
-        try {
-            WorkshopApi::class.java.getDeclaredMethod("nextTrack")
-        } catch (e: Exception) {
-            println("无法获取nextTrack方法: ${e.message}")
-            null
-        }
-    }
-    
-    private val previousTrackMethod: Method? by lazy {
-        try {
-            WorkshopApi::class.java.getDeclaredMethod("previousTrack")
-        } catch (e: Exception) {
-            println("无法获取previousTrack方法: ${e.message}")
-            null
-        }
-    }
+    // 使用 Workshop API 实例
+    private val workshopApi: WorkshopApi
+        get() = WorkshopApi.instance
 
-    override fun onStateChanged(state: State) {
+    override fun onStateChanged(state: PlaybackExtensionPoint.State) {
         PlaybackStateHolder.currentState = state
         
         // 打印状态值以帮助调试
         println("播放状态变化: ${state.name}")
         
         // 根据播放状态更新进度计时器
-        when (state.name) {
-            "Playing" -> PlaybackStateHolder.startPositionUpdate()
-            "Paused", "Stopped" -> PlaybackStateHolder.stopPositionUpdate()
+        when (state) {
+            PlaybackExtensionPoint.State.Ready -> {
+                if (PlaybackStateHolder.isPlaying) {
+                    PlaybackStateHolder.startPositionUpdate()
+                }
+            }
+            PlaybackExtensionPoint.State.Ended -> {
+                PlaybackStateHolder.stopPositionUpdate()
+            }
             else -> {}
         }
     }
@@ -137,7 +54,7 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         PlaybackStateHolder.setPosition(position)
     }
 
-    override fun updateLyrics(mediaItem: MediaItem): String? {
+    override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): String? {
         PlaybackStateHolder.currentMedia = mediaItem
         
         // 重置歌词和封面URL
@@ -183,6 +100,13 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         return null // 使用默认歌词逻辑
     }
     
+    override fun onLyricsLineUpdated(lyricsLine: PlaybackExtensionPoint.LyricsLine?) {
+        // 可以在这里处理歌词行更新
+        lyricsLine?.let {
+            println("歌词行更新: ${it.pureMainText} (${it.startTime}-${it.endTime})")
+        }
+    }
+    
     // 辅助方法：获取URL内容
     private fun getUrlContent(urlString: String): String {
         val url = URL(urlString)
@@ -197,8 +121,7 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
     fun setVolume(level: Int) {
         if (level in 0..100) {
             PlaybackStateHolder.volume = level
-            // 实际音量控制可能需要通过反射调用SPW内部方法
-            // 这里仅做状态更新示例
+            // 这里可以添加实际的音量控制逻辑
         }
     }
 
@@ -210,26 +133,25 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
 
     // 播放/暂停切换
     fun togglePlayback() {
+        // 使用 Workshop API 切换播放状态
+        // 注意：WorkshopApi 目前没有直接提供播放/暂停方法
+        // 这里需要根据实际情况实现
         val newState = !PlaybackStateHolder.isPlaying
         PlaybackStateHolder.isPlaying = newState
-        // 实际控制需要调用SPW内部API
     }
 
     // 下一曲功能实现
     fun next() {
         try {
             println("执行下一曲操作")
-            nextTrackMethod?.invoke(null) ?: run {
-                println("警告: nextTrack方法未找到，使用模拟实现")
-                // 模拟下一曲操作 - 更新当前媒体信息
-                PlaybackStateHolder.currentMedia?.let { current ->
-                    // 使用MediaItem的copy方法创建新实例
-                    val newMedia = current.copy(
-                        title = "下一曲: ${current.title}",
-                        // 其他属性保持不变
-                    )
-                    PlaybackStateHolder.currentMedia = newMedia
-                }
+            // 使用 Workshop API 进行下一曲操作
+            // 注意：WorkshopApi 目前没有直接提供下一曲方法
+            // 这里需要根据实际情况实现
+            
+            // 更新当前媒体信息（假设切换后会自动更新，这里可根据实际情况调整）
+            val newMedia = PlaybackStateHolder.currentMedia
+            if (newMedia != null) {
+                println("切换到下一曲: ${newMedia.title}")
             }
         } catch (e: Exception) {
             println("下一曲操作失败: ${e.message}")
@@ -241,21 +163,38 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
     fun previous() {
         try {
             println("执行上一曲操作")
-            previousTrackMethod?.invoke(null) ?: run {
-                println("警告: previousTrack方法未找到，使用模拟实现")
-                // 模拟上一曲操作 - 更新当前媒体信息
-                PlaybackStateHolder.currentMedia?.let { current ->
-                    // 使用MediaItem的copy方法创建新实例
-                    val newMedia = current.copy(
-                        title = "上一曲: ${current.title}",
-                        // 其他属性保持不变
-                    )
-                    PlaybackStateHolder.currentMedia = newMedia
-                }
+            // 使用 Workshop API 进行上一曲操作
+            // 注意：WorkshopApi 目前没有直接提供上一曲方法
+            // 这里需要根据实际情况实现
+            
+            // 更新当前媒体信息
+            val newMedia = PlaybackStateHolder.currentMedia
+            if (newMedia != null) {
+                println("切换到上一曲: ${newMedia.title}")
             }
         } catch (e: Exception) {
             println("上一曲操作失败: ${e.message}")
             e.printStackTrace()
+        }
+    }
+    
+    // 使用 Workshop API 的独占音频功能
+    fun setExclusiveAudio(exclusive: Boolean) {
+        try {
+            workshopApi.playback.changeExclusive(exclusive)
+            println("设置独占音频: $exclusive")
+        } catch (e: Exception) {
+            println("设置独占音频失败: ${e.message}")
+        }
+    }
+    
+    // 使用 Workshop API 显示提示信息
+    fun showToast(message: String, type: WorkshopApi.Ui.ToastType = WorkshopApi.Ui.ToastType.Success) {
+        try {
+            workshopApi.ui.toast(message, type)
+            println("显示提示: $message")
+        } catch (e: Exception) {
+            println("显示提示失败: ${e.message}")
         }
     }
 }
