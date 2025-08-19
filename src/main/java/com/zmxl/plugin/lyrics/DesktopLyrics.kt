@@ -3,6 +3,7 @@ package com.zmxl.plugin.lyrics
 import com.google.gson.Gson
 import java.awt.*
 import java.awt.event.*
+import java.awt.image.BufferedImage
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
@@ -20,9 +21,14 @@ object DesktopLyrics {
     private val timer = Timer(500) { updateLyrics() }
     private val gson = Gson()
     
-    fun init() {
+    fun start() {
         setupUI()
         timer.start()
+    }
+    
+    fun stop() {
+        timer.stop()
+        frame.dispose()
     }
     
     private fun setupUI() {
@@ -30,7 +36,7 @@ object DesktopLyrics {
             title = "Salt Player 桌面歌词"
             isUndecorated = true
             background = Color(0, 0, 0, 0)
-            alwaysOnTop = true
+            setAlwaysOnTop(true)  // 修复: 使用正确的方法
             
             contentPane.apply {
                 layout = BorderLayout()
@@ -79,6 +85,8 @@ object DesktopLyrics {
             if (SystemTray.isSupported()) {
                 setupSystemTray()
             }
+            
+            isVisible = true
         }
     }
     
@@ -166,9 +174,7 @@ object DesktopLyrics {
     }
     
     private fun exitApplication() {
-        timer.stop()
-        frame.dispose()
-        System.exit(0)
+        stop()
     }
     
     data class NowPlaying(
@@ -330,10 +336,4 @@ class LyricsPanel : JPanel() {
     }
     
     data class LyricLine(val time: Long, val text: String)
-}
-
-fun main() {
-    SwingUtilities.invokeLater {
-        DesktopLyrics.init()
-    }
 }
