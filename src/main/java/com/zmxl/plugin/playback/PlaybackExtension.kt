@@ -54,6 +54,11 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         PlaybackStateHolder.setPosition(position)
     }
 
+    // 实现已弃用的 updateLyrics 方法
+    override fun updateLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): String? {
+        return onBeforeLoadLyrics(mediaItem)
+    }
+
     override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): String? {
         PlaybackStateHolder.currentMedia = mediaItem
         
@@ -102,8 +107,8 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
     
     override fun onLyricsLineUpdated(lyricsLine: PlaybackExtensionPoint.LyricsLine?) {
         // 可以在这里处理歌词行更新
-        lyricsLine?.let {
-            println("歌词行更新: ${it.pureMainText} (${it.startTime}-${it.endTime})")
+        lyricsLine?.let { line ->
+            println("歌词行更新: ${line.pureMainText} (${line.startTime}-${line.endTime})")
         }
     }
     
