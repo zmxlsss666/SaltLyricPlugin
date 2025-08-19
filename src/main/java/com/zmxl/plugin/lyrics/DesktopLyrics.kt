@@ -3,7 +3,6 @@ package com.zmxl.plugin.lyrics
 import com.google.gson.Gson
 import java.awt.*
 import java.awt.event.*
-import java.awt.font.TextAttribute
 import java.awt.image.BufferedImage
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -23,6 +22,8 @@ object DesktopLyrics {
     private val gson = Gson()
     
     private var currentSongId = ""
+    private var lastLyricUrl = ""
+    private var lyricCache = mutableMapOf<String, String>()
     
     fun start() {
         setupUI()
@@ -278,7 +279,7 @@ object DesktopLyrics {
                 val titleColorButton = JButton().apply {
                     background = lyricsPanel.titleColor
                     addActionListener { 
-                        val color = JColorChooser.showDialog(dialog, "选择标题颜色", background)
+                        val color = JColorChooser.showDialog(this@showSettingsDialog, "选择标题颜色", background)
                         if (color != null) {
                             background = color
                             lyricsPanel.titleColor = color
@@ -292,7 +293,7 @@ object DesktopLyrics {
                 val artistColorButton = JButton().apply {
                     background = lyricsPanel.artistColor
                     addActionListener { 
-                        val color = JColorChooser.showDialog(dialog, "选择艺术家颜色", background)
+                        val color = JColorChooser.showDialog(this@showSettingsDialog, "选择艺术家颜色", background)
                         if (color != null) {
                             background = color
                             lyricsPanel.artistColor = color
@@ -306,7 +307,7 @@ object DesktopLyrics {
                 val lyricColorButton = JButton().apply {
                     background = lyricsPanel.lyricColor
                     addActionListener { 
-                        val color = JColorChooser.showDialog(dialog, "选择歌词颜色", background)
+                        val color = JColorChooser.showDialog(this@showSettingsDialog, "选择歌词颜色", background)
                         if (color != null) {
                             background = color
                             lyricsPanel.lyricColor = color
@@ -320,7 +321,7 @@ object DesktopLyrics {
                 val highlightColorButton = JButton().apply {
                     background = lyricsPanel.highlightColor
                     addActionListener { 
-                        val color = JColorChooser.showDialog(dialog, "选择高亮歌词颜色", background)
+                        val color = JColorChooser.showDialog(this@showSettingsDialog, "选择高亮歌词颜色", background)
                         if (color != null) {
                             background = color
                             lyricsPanel.highlightColor = color
@@ -391,24 +392,34 @@ object DesktopLyrics {
         try {
             // 获取当前播放信息
             val nowPlaying = getNowPlaying()
+            if (nowPlaying == null) {
+                frame.isVisible = false
+                return
+            }
             
             // 检查歌曲是否变化
-            val newSongId = "${nowPlaying?.title}-${nowPlaying?.artist}"
+            val newSongId = "${nowPlaying.title}-${nowPlaying.artist}-${nowPlaying.album}"
             val songChanged = newSongId != currentSongId
             
             if (songChanged) {
                 currentSongId = newSongId
                 // 重置歌词状态
                 lyricsPanel.resetLyrics()
+                lastLyricUrl = ""
             }
             
-            val lyricContent = if (songChanged) getLyric() else null
+            // 获取歌词内容（仅在需要时）
+            val lyricContent = if (songChanged || lyricsPanel.parsedLyrics.isEmpty()) {
+                getLyric()
+            } else {
+                null
+            }
             
             // 更新歌词面板
             lyricsPanel.updateContent(
-                title = nowPlaying?.title ?: "无歌曲播放",
-                artist = nowPlaying?.artist ?: "",
-                position = nowPlaying?.position ?: 0,
+                title = nowPlaying.title ?: "无歌曲播放",
+                artist = nowPlaying.artist ?: "",
+                position = nowPlaying.position,
                 lyric = lyricContent
             )
             
@@ -420,34 +431,54 @@ object DesktopLyrics {
     }
     
     private fun getNowPlaying(): NowPlaying? {
-        val url = URL("http://localhost:35373/api/now-playing")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "GET"
-        conn.connectTimeout = 1000
-        
-        if (conn.responseCode != 200) return null
-        
-        val reader = BufferedReader(InputStreamReader(conn.inputStream))
-        val response = reader.readText()
-        reader.close()
-        
-        return gson.fromJson(response, NowPlaying::class.java)
+        try {
+            val url = URL("http://localhost:35373/api/now-playing")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 1000
+            
+            if (conn.responseCode != 200) return null
+            
+            val reader = BufferedReader(InputStreamReader(conn.inputStream))
+            val response = reader.readText()
+            reader.close()
+            
+            return gson.fromJson(response, NowPlaying::class.java)
+        } catch (e: Exception) {
+            return null
+        }
     }
     
     private fun getLyric(): String? {
-        val url = URL("http://localhost:35373/api/lyric")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "GET"
-        conn.connectTimeout = 1000
-        
-        if (conn.responseCode != 200) return null
-        
-        val reader = BufferedReader(InputStreamReader(conn.inputStream))
-        val response = reader.readText()
-        reader.close()
-        
-        val lyricResponse = gson.fromJson(response, LyricResponse::class.java)
-        return lyricResponse.lyric
+        try {
+            // 检查缓存
+            if (lastLyricUrl.isNotEmpty() && lyricCache.containsKey(lastLyricUrl)) {
+                return lyricCache[lastLyricUrl]
+            }
+            
+            val url = URL("http://localhost:35373/api/lyric")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 1000
+            
+            if (conn.responseCode != 200) return null
+            
+            val reader = BufferedReader(InputStreamReader(conn.inputStream))
+            val response = reader.readText()
+            reader.close()
+            
+            val lyricResponse = gson.fromJson(response, LyricResponse::class.java)
+            val lyric = lyricResponse.lyric
+            
+            // 更新缓存
+            if (lyric != null) {
+                lyricCache[lastLyricUrl] = lyric
+            }
+            
+            return lyric
+        } catch (e: Exception) {
+            return null
+        }
     }
     
     private fun exitApplication() {
@@ -476,7 +507,7 @@ class LyricsPanel : JPanel() {
     private var artist = ""
     private var position = 0L
     private var lyric = ""
-    private var parsedLyrics = listOf<LyricLine>()
+    var parsedLyrics = listOf<LyricLine>()
     private var currentLineIndex = -1
     var transparency = 0.8f
     var animationSpeed = 5
@@ -568,7 +599,9 @@ class LyricsPanel : JPanel() {
         repaint()
     }
     
-    private fun parseLyrics(lyricText: String): List<LyricLine> {
+    private fun parseLyrics(lyricText: String?): List<LyricLine> {
+        if (lyricText.isNullOrEmpty()) return emptyList()
+        
         val lines = mutableListOf<LyricLine>()
         val pattern = Regex("""\[(\d+):(\d+)(?:\.(\d+))?](.*)""")
         
