@@ -18,7 +18,7 @@ object DesktopLyrics {
     private var isDragging = false
     private var dragStart: Point? = null
     
-    private val timer = Timer(200) { updateLyrics() } // 缩短更新间隔至200ms
+    private val timer = Timer(200) { updateLyrics() }
     private val gson = Gson()
     
     private var currentSongId = ""
@@ -213,167 +213,165 @@ object DesktopLyrics {
     }
     
     private fun showSettingsDialog() {
-        val dialog = JDialog(frame, "桌面歌词设置", true).apply {
-            layout = BorderLayout()
-            setSize(400, 400)
-            setLocationRelativeTo(frame)
+        val dialog = JDialog(frame, "桌面歌词设置", true)
+        dialog.layout = BorderLayout()
+        dialog.setSize(400, 400)
+        dialog.setLocationRelativeTo(frame)
+        
+        val tabbedPane = JTabbedPane()
+        
+        // 字体设置面板
+        val fontPanel = JPanel(GridLayout(0, 2, 10, 10)).apply {
+            border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
             
-            val tabbedPane = JTabbedPane()
+            // 字体选择
+            add(JLabel("字体:"))
+            val fontCombo = JComboBox(GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getAvailableFontFamilyNames())
+            fontCombo.selectedItem = lyricsPanel.titleFont.family
+            add(fontCombo)
             
-            // 字体设置面板
-            val fontPanel = JPanel(GridLayout(0, 2, 10, 10)).apply {
-                border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
-                
-                // 字体选择
-                add(JLabel("字体:"))
-                val fontCombo = JComboBox(GraphicsEnvironment.getLocalGraphicsEnvironment()
-                    .getAvailableFontFamilyNames())
-                fontCombo.selectedItem = lyricsPanel.titleFont.family
-                add(fontCombo)
-                
-                // 字体大小
-                add(JLabel("字体大小:"))
-                val sizeSpinner = JSpinner(SpinnerNumberModel(lyricsPanel.titleFont.size, 8, 48, 1))
-                add(sizeSpinner)
-                
-                // 字体样式
-                add(JLabel("字体样式:"))
-                val styleCombo = JComboBox(arrayOf("普通", "粗体", "斜体"))
-                styleCombo.selectedIndex = when (lyricsPanel.titleFont.style) {
-                    Font.BOLD -> 1
-                    Font.ITALIC -> 2
-                    else -> 0
-                }
-                add(styleCombo)
-                
-                // 应用按钮
-                val applyButton = JButton("应用字体设置").apply {
-                    addActionListener {
-                        val fontName = fontCombo.selectedItem as String
-                        val fontSize = sizeSpinner.value as Int
-                        val fontStyle = when (styleCombo.selectedIndex) {
-                            1 -> Font.BOLD
-                            2 -> Font.ITALIC
-                            else -> Font.PLAIN
-                        }
-                        
-                        lyricsPanel.setFonts(
-                            Font(fontName, fontStyle, fontSize),
-                            Font(fontName, fontStyle, fontSize - 4),
-                            Font(fontName, fontStyle, fontSize + 8),
-                            Font(fontName, Font.BOLD, fontSize + 12)
-                        )
+            // 字体大小
+            add(JLabel("字体大小:"))
+            val sizeSpinner = JSpinner(SpinnerNumberModel(lyricsPanel.titleFont.size, 8, 48, 1))
+            add(sizeSpinner)
+            
+            // 字体样式
+            add(JLabel("字体样式:"))
+            val styleCombo = JComboBox(arrayOf("普通", "粗体", "斜体"))
+            styleCombo.selectedIndex = when (lyricsPanel.titleFont.style) {
+                Font.BOLD -> 1
+                Font.ITALIC -> 2
+                else -> 0
+            }
+            add(styleCombo)
+            
+            // 应用按钮
+            val applyButton = JButton("应用字体设置").apply {
+                addActionListener {
+                    val fontName = fontCombo.selectedItem as String
+                    val fontSize = sizeSpinner.value as Int
+                    val fontStyle = when (styleCombo.selectedIndex) {
+                        1 -> Font.BOLD
+                        2 -> Font.ITALIC
+                        else -> Font.PLAIN
                     }
+                    
+                    lyricsPanel.setFonts(
+                        Font(fontName, fontStyle, fontSize),
+                        Font(fontName, fontStyle, fontSize - 4),
+                        Font(fontName, fontStyle, fontSize + 8),
+                        Font(fontName, Font.BOLD, fontSize + 12)
+                    )
                 }
-                
-                add(JLabel())
-                add(applyButton)
             }
             
-            // 颜色设置面板
-            val colorPanel = JPanel(GridLayout(0, 2, 10, 10)).apply {
-                border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
-                
-                // 标题颜色
-                add(JLabel("标题颜色:"))
-                val titleColorButton = JButton().apply {
-                    background = lyricsPanel.titleColor
-                    addActionListener { 
-                        val color = JColorChooser.showDialog(this@showSettingsDialog, "选择标题颜色", background)
-                        if (color != null) {
-                            background = color
-                            lyricsPanel.titleColor = color
-                        }
-                    }
-                }
-                add(titleColorButton)
-                
-                // 艺术家颜色
-                add(JLabel("艺术家颜色:"))
-                val artistColorButton = JButton().apply {
-                    background = lyricsPanel.artistColor
-                    addActionListener { 
-                        val color = JColorChooser.showDialog(this@showSettingsDialog, "选择艺术家颜色", background)
-                        if (color != null) {
-                            background = color
-                            lyricsPanel.artistColor = color
-                        }
-                    }
-                }
-                add(artistColorButton)
-                
-                // 歌词颜色
-                add(JLabel("歌词颜色:"))
-                val lyricColorButton = JButton().apply {
-                    background = lyricsPanel.lyricColor
-                    addActionListener { 
-                        val color = JColorChooser.showDialog(this@showSettingsDialog, "选择歌词颜色", background)
-                        if (color != null) {
-                            background = color
-                            lyricsPanel.lyricColor = color
-                        }
-                    }
-                }
-                add(lyricColorButton)
-                
-                // 高亮歌词颜色
-                add(JLabel("高亮歌词颜色:"))
-                val highlightColorButton = JButton().apply {
-                    background = lyricsPanel.highlightColor
-                    addActionListener { 
-                        val color = JColorChooser.showDialog(this@showSettingsDialog, "选择高亮歌词颜色", background)
-                        if (color != null) {
-                            background = color
-                            lyricsPanel.highlightColor = color
-                        }
-                    }
-                }
-                add(highlightColorButton)
-            }
-            
-            // 其他设置面板
-            val otherPanel = JPanel(GridLayout(0, 2, 10, 10)).apply {
-                border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
-                
-                // 透明度设置
-                add(JLabel("窗口透明度:"))
-                val transparencySlider = JSlider(10, 100, (lyricsPanel.transparency * 100).toInt()).apply {
-                    addChangeListener {
-                        lyricsPanel.transparency = value / 100f
-                        lyricsPanel.background = Color(0, 0, 0, (255 * lyricsPanel.transparency).roundToInt())
-                        lyricsPanel.repaint()
-                    }
-                }
-                add(transparencySlider)
-                
-                // 动画速度设置
-                add(JLabel("动画速度:"))
-                val animationSlider = JSlider(1, 10, lyricsPanel.animationSpeed).apply {
-                    addChangeListener {
-                        lyricsPanel.animationSpeed = value
-                    }
-                }
-                add(animationSlider)
-            }
-            
-            tabbedPane.addTab("字体", fontPanel)
-            tabbedPane.addTab("颜色", colorPanel)
-            tabbedPane.addTab("其他", otherPanel)
-            
-            add(tabbedPane, BorderLayout.CENTER)
-            
-            // 添加关闭按钮
-            val closeButton = JButton("关闭").apply {
-                addActionListener { dispose() }
-            }
-            
-            val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
-                add(closeButton)
-            }
-            
-            add(buttonPanel, BorderLayout.SOUTH)
+            add(JLabel())
+            add(applyButton)
         }
         
+        // 颜色设置面板
+        val colorPanel = JPanel(GridLayout(0, 2, 10, 10)).apply {
+            border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
+            
+            // 标题颜色
+            add(JLabel("标题颜色:"))
+            val titleColorButton = JButton().apply {
+                background = lyricsPanel.titleColor
+                addActionListener { 
+                    val color = JColorChooser.showDialog(dialog, "选择标题颜色", background)
+                    if (color != null) {
+                        background = color
+                        lyricsPanel.titleColor = color
+                    }
+                }
+            }
+            add(titleColorButton)
+            
+            // 艺术家颜色
+            add(JLabel("艺术家颜色:"))
+            val artistColorButton = JButton().apply {
+                background = lyricsPanel.artistColor
+                addActionListener { 
+                    val color = JColorChooser.showDialog(dialog, "选择艺术家颜色", background)
+                    if (color != null) {
+                        background = color
+                        lyricsPanel.artistColor = color
+                    }
+                }
+            }
+            add(artistColorButton)
+            
+            // 歌词颜色
+            add(JLabel("歌词颜色:"))
+            val lyricColorButton = JButton().apply {
+                background = lyricsPanel.lyricColor
+                addActionListener { 
+                    val color = JColorChooser.showDialog(dialog, "选择歌词颜色", background)
+                    if (color != null) {
+                        background = color
+                        lyricsPanel.lyricColor = color
+                    }
+                }
+            }
+            add(lyricColorButton)
+            
+            // 高亮歌词颜色
+            add(JLabel("高亮歌词颜色:"))
+            val highlightColorButton = JButton().apply {
+                background = lyricsPanel.highlightColor
+                addActionListener { 
+                    val color = JColorChooser.showDialog(dialog, "选择高亮歌词颜色", background)
+                    if (color != null) {
+                        background = color
+                        lyricsPanel.highlightColor = color
+                    }
+                }
+            }
+            add(highlightColorButton)
+        }
+        
+        // 其他设置面板
+        val otherPanel = JPanel(GridLayout(0, 2, 10, 10)).apply {
+            border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
+            
+            // 透明度设置
+            add(JLabel("窗口透明度:"))
+            val transparencySlider = JSlider(10, 100, (lyricsPanel.transparency * 100).toInt()).apply {
+                addChangeListener {
+                    lyricsPanel.transparency = value / 100f
+                    lyricsPanel.background = Color(0, 0, 0, (255 * lyricsPanel.transparency).roundToInt())
+                    lyricsPanel.repaint()
+                }
+            }
+            add(transparencySlider)
+            
+            // 动画速度设置
+            add(JLabel("动画速度:"))
+            val animationSlider = JSlider(1, 10, lyricsPanel.animationSpeed).apply {
+                addChangeListener {
+                    lyricsPanel.animationSpeed = value
+                }
+            }
+            add(animationSlider)
+        }
+        
+        tabbedPane.addTab("字体", fontPanel)
+        tabbedPane.addTab("颜色", colorPanel)
+        tabbedPane.addTab("其他", otherPanel)
+        
+        dialog.add(tabbedPane, BorderLayout.CENTER)
+        
+        // 添加关闭按钮
+        val closeButton = JButton("关闭").apply {
+            addActionListener { dialog.dispose() }
+        }
+        
+        val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
+            add(closeButton)
+        }
+        
+        dialog.add(buttonPanel, BorderLayout.SOUTH)
         dialog.isVisible = true
     }
     
