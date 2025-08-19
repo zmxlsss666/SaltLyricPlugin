@@ -141,7 +141,7 @@ object SmtcController {
         try {
             println("执行下一曲操作")
             // 调用播放扩展的下一曲方法
-            playbackExtension.next()  // 使用正确的方法名
+            playbackExtension.next()
             // 更新当前媒体信息（假设切换后会自动更新，这里可根据实际情况调整）
             val newMedia = PlaybackStateHolder.currentMedia
             if (newMedia != null) {
@@ -158,7 +158,7 @@ object SmtcController {
         try {
             println("执行上一曲操作")
             // 调用播放扩展的上一曲方法
-            playbackExtension.previous()  // 使用正确的方法名
+            playbackExtension.previous()
             // 更新当前媒体信息
             val newMedia = PlaybackStateHolder.currentMedia
             if (newMedia != null) {
