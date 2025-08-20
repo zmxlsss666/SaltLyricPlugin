@@ -17,6 +17,7 @@ import kotlin.math.roundToInt
 
 object DesktopLyrics {
     private val frame = JFrame()
+    
     private val lyricsPanel = LyricsPanel()
     private var isDragging = false
     private var dragStart: Point? = null
@@ -313,7 +314,7 @@ object DesktopLyrics {
             }
             
             // 右侧功能按钮
-            val rightPanel = JPanel(FlowLayout(FlowLayout.RRIGHT, 5, 0)).apply {
+            val rightPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 5, 0)).apply {
                 background = Color(0, 0, 0, 0)
                 isOpaque = false
                 
@@ -1318,3 +1319,4 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
