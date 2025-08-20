@@ -65,6 +65,9 @@ object DesktopLyrics {
         frame.repaint()
     }
     
+    // 窗口状态跟踪
+    private var isWindowVisible = true
+    
     // JNA接口定义
     interface User32Ex : com.sun.jna.platform.win32.User32 {
         fun SetWindowCompositionAttribute(hWnd: WinDef.HWND, data: WindowCompositionAttributeData): Boolean
@@ -279,10 +282,28 @@ object DesktopLyrics {
             addWindowStateListener { e ->
                 if (e.newState == Frame.NORMAL) {
                     // 窗口从最小化恢复，强制更新歌词
+                    isWindowVisible = true
                     updateLyrics()
                     lyricsPanel.repaint()
+                } else if (e.newState == Frame.ICONIFIED) {
+                    isWindowVisible = false
                 }
             }
+            
+            // 添加窗口监听器
+            addWindowListener(object : WindowAdapter() {
+                override fun windowClosing(e: WindowEvent?) {
+                    isWindowVisible = false
+                }
+                
+                override fun windowClosed(e: WindowEvent?) {
+                    isWindowVisible = false
+                }
+                
+                override fun windowOpened(e: WindowEvent?) {
+                    isWindowVisible = true
+                }
+            })
             
             // 添加系统托盘图标
             if (SystemTray.isSupported()) {
@@ -387,7 +408,10 @@ object DesktopLyrics {
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
                     border = BorderFactory.createEmptyBorder(3, 6, 3, 6) // 减小内边距
-                    addActionListener { frame.isVisible = false }
+                    addActionListener { 
+                        frame.isVisible = false
+                        isWindowVisible = false
+                    }
                 }
                 
                 add(lockButton)
@@ -480,7 +504,13 @@ object DesktopLyrics {
         
         // 添加显示/隐藏菜单
         val toggleItem = MenuItem("显示/隐藏")
-        toggleItem.addActionListener { frame.isVisible = !frame.isVisible }
+        toggleItem.addActionListener { 
+            frame.isVisible = !frame.isVisible
+            isWindowVisible = frame.isVisible
+            if (frame.isVisible) {
+                updateLyrics()
+            }
+        }
         
         // 添加锁定/解锁菜单
         val lockItem = MenuItem(if (isLocked) "解锁" else "锁定")
@@ -508,7 +538,13 @@ object DesktopLyrics {
         }
         
         trayIcon.popupMenu = popup
-        trayIcon.addActionListener { frame.isVisible = !frame.isVisible }
+        trayIcon.addActionListener { 
+            frame.isVisible = !frame.isVisible
+            isWindowVisible = frame.isVisible
+            if (frame.isVisible) {
+                updateLyrics()
+            }
+        }
         
         try {
             tray.add(trayIcon)
@@ -960,11 +996,15 @@ object DesktopLyrics {
     }
     
     private fun updateLyrics() {
+        // 如果窗口不可见，跳过更新逻辑
+        if (!isWindowVisible) return
+        
         try {
             // 获取当前播放信息
             val nowPlaying = getNowPlaying()
             if (nowPlaying == null) {
                 frame.isVisible = false
+                isWindowVisible = false
                 return
             }
             
@@ -1001,9 +1041,11 @@ object DesktopLyrics {
             )
             
             frame.isVisible = true
+            isWindowVisible = true
         } catch (e: Exception) {
             // 连接失败时隐藏窗口
             frame.isVisible = false
+            isWindowVisible = false
         }
     }
     
