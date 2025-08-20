@@ -3,6 +3,7 @@ package com.zmxl.plugin.lyrics
 import com.google.gson.Gson
 import java.awt.*
 import java.awt.event.*
+import java.awt.font.TextAttribute
 import java.awt.image.BufferedImage
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -18,12 +19,17 @@ object DesktopLyrics {
     private var isDragging = false
     private var dragStart: Point? = null
     
-    private val timer = Timer(200) { updateLyrics() }
+    private val timer = Timer(10) { updateLyrics() } // 缩短更新间隔至10ms
     private val gson = Gson()
     
     private var currentSongId = ""
     private var lastLyricUrl = ""
     private var lyricCache = mutableMapOf<String, String>()
+    
+    // 字体设置
+    private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
+    private var japaneseFont = Font("MS Gothic", Font.BOLD, 24)
+    private var englishFont = Font("Arial", Font.BOLD, 24)
     
     fun start() {
         setupUI()
@@ -53,9 +59,10 @@ object DesktopLyrics {
                 background = Color(0, 0, 0, 100)
                 isOpaque = false
                 
+                // 使用Unicode字符避免乱码
                 // 添加上一曲按钮
                 val prevButton = JButton("◀").apply {
-                    font = Font("微软雅黑", Font.BOLD, 14)
+                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
                     border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
@@ -64,7 +71,7 @@ object DesktopLyrics {
                 
                 // 添加播放/暂停按钮
                 val playPauseButton = JButton("▶").apply {
-                    font = Font("微软雅黑", Font.BOLD, 14)
+                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
                     border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
@@ -73,7 +80,7 @@ object DesktopLyrics {
                 
                 // 添加下一曲按钮
                 val nextButton = JButton("▶").apply {
-                    font = Font("微软雅黑", Font.BOLD, 14)
+                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
                     border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
@@ -183,18 +190,20 @@ object DesktopLyrics {
         val image = createTrayIconImage()
         val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
         
+        // 使用Unicode字体避免乱码
         val popup = PopupMenu().apply {
-            // 显式设置字体防止乱码
             font = Font("微软雅黑", Font.PLAIN, 12)
         }
         
         // 添加设置菜单
         val settingsItem = MenuItem("设置").apply {
+            font = Font("微软雅黑", Font.PLAIN, 12)
             addActionListener { showSettingsDialog() }
         }
         
         // 添加退出菜单
         val exitItem = MenuItem("退出").apply {
+            font = Font("微软雅黑", Font.PLAIN, 12)
             addActionListener { exitApplication() }
         }
         
@@ -215,7 +224,7 @@ object DesktopLyrics {
     private fun showSettingsDialog() {
         val dialog = JDialog(frame, "桌面歌词设置", true)
         dialog.layout = BorderLayout()
-        dialog.setSize(400, 400)
+        dialog.setSize(500, 500)
         dialog.setLocationRelativeTo(frame)
         
         val tabbedPane = JTabbedPane()
@@ -224,22 +233,36 @@ object DesktopLyrics {
         val fontPanel = JPanel(GridLayout(0, 2, 10, 10)).apply {
             border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
             
-            // 字体选择
-            add(JLabel("字体:"))
-            val fontCombo = JComboBox(GraphicsEnvironment.getLocalGraphicsEnvironment()
+            // 中文字体选择
+            add(JLabel("中文字体:"))
+            val chineseFontCombo = JComboBox(GraphicsEnvironment.getLocalGraphicsEnvironment()
                 .getAvailableFontFamilyNames())
-            fontCombo.selectedItem = lyricsPanel.titleFont.family
-            add(fontCombo)
+            chineseFontCombo.selectedItem = chineseFont.family
+            add(chineseFontCombo)
+            
+            // 日文字体选择
+            add(JLabel("日文字体:"))
+            val japaneseFontCombo = JComboBox(GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getAvailableFontFamilyNames())
+            japaneseFontCombo.selectedItem = japaneseFont.family
+            add(japaneseFontCombo)
+            
+            // 英文字体选择
+            add(JLabel("英文字体:"))
+            val englishFontCombo = JComboBox(GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getAvailableFontFamilyNames())
+            englishFontCombo.selectedItem = englishFont.family
+            add(englishFontCombo)
             
             // 字体大小
             add(JLabel("字体大小:"))
-            val sizeSpinner = JSpinner(SpinnerNumberModel(lyricsPanel.titleFont.size, 8, 48, 1))
+            val sizeSpinner = JSpinner(SpinnerNumberModel(chineseFont.size, 8, 48, 1))
             add(sizeSpinner)
             
             // 字体样式
             add(JLabel("字体样式:"))
             val styleCombo = JComboBox(arrayOf("普通", "粗体", "斜体"))
-            styleCombo.selectedIndex = when (lyricsPanel.titleFont.style) {
+            styleCombo.selectedIndex = when (chineseFont.style) {
                 Font.BOLD -> 1
                 Font.ITALIC -> 2
                 else -> 0
@@ -249,7 +272,9 @@ object DesktopLyrics {
             // 应用按钮
             val applyButton = JButton("应用字体设置").apply {
                 addActionListener {
-                    val fontName = fontCombo.selectedItem as String
+                    val chineseFontName = chineseFontCombo.selectedItem as String
+                    val japaneseFontName = japaneseFontCombo.selectedItem as String
+                    val englishFontName = englishFontCombo.selectedItem as String
                     val fontSize = sizeSpinner.value as Int
                     val fontStyle = when (styleCombo.selectedIndex) {
                         1 -> Font.BOLD
@@ -257,12 +282,11 @@ object DesktopLyrics {
                         else -> Font.PLAIN
                     }
                     
-                    lyricsPanel.setFonts(
-                        Font(fontName, fontStyle, fontSize),
-                        Font(fontName, fontStyle, fontSize - 4),
-                        Font(fontName, fontStyle, fontSize + 8),
-                        Font(fontName, Font.BOLD, fontSize + 12)
-                    )
+                    chineseFont = Font(chineseFontName, fontStyle, fontSize)
+                    japaneseFont = Font(japaneseFontName, fontStyle, fontSize)
+                    englishFont = Font(englishFontName, fontStyle, fontSize)
+                    
+                    lyricsPanel.setFonts(chineseFont, japaneseFont, englishFont)
                 }
             }
             
@@ -348,12 +372,29 @@ object DesktopLyrics {
             
             // 动画速度设置
             add(JLabel("动画速度:"))
-            val animationSlider = JSlider(1, 10, lyricsPanel.animationSpeed).apply {
+            val animationSlider = JSlider(1, 20, lyricsPanel.animationSpeed).apply {
                 addChangeListener {
                     lyricsPanel.animationSpeed = value
                 }
             }
             add(animationSlider)
+            
+            // 歌词对齐方式
+            add(JLabel("歌词对齐:"))
+            val alignmentCombo = JComboBox(arrayOf("居中", "左对齐", "右对齐"))
+            alignmentCombo.selectedIndex = when (lyricsPanel.alignment) {
+                LyricsPanel.Alignment.LEFT -> 1
+                LyricsPanel.Alignment.RIGHT -> 2
+                else -> 0
+            }
+            alignmentCombo.addActionListener {
+                lyricsPanel.alignment = when (alignmentCombo.selectedIndex) {
+                    1 -> LyricsPanel.Alignment.LEFT
+                    2 -> LyricsPanel.Alignment.RIGHT
+                    else -> LyricsPanel.Alignment.CENTER
+                }
+            }
+            add(alignmentCombo)
         }
         
         tabbedPane.addTab("字体", fontPanel)
@@ -508,13 +549,13 @@ class LyricsPanel : JPanel() {
     var parsedLyrics = listOf<LyricLine>()
     private var currentLineIndex = -1
     var transparency = 0.8f
-    var animationSpeed = 5
+    var animationSpeed = 10
+    var alignment = Alignment.CENTER
     
     // 字体设置
-    var titleFont = Font("微软雅黑", Font.BOLD, 16)
-    var artistFont = Font("微软雅黑", Font.PLAIN, 14)
-    var lyricFont = Font("微软雅黑", Font.BOLD, 24)
-    var highlightFont = Font("微软雅黑", Font.BOLD, 28)
+    private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
+    private var japaneseFont = Font("MS Gothic", Font.BOLD, 24)
+    private var englishFont = Font("Arial", Font.BOLD, 24)
     
     // 颜色设置
     var titleColor = Color.WHITE
@@ -528,14 +569,29 @@ class LyricsPanel : JPanel() {
     private var prevLineIndex = -1
     private var nextLineIndex = -1
     
+    // 平滑动画相关
+    private var smoothPosition = 0f
+    private var targetPosition = 0f
+    private var smoothAlpha = 0f
+    private var targetAlpha = 0f
+    
+    enum class Alignment {
+        LEFT, CENTER, RIGHT
+    }
+    
     init {
         background = Color(0, 0, 0, (255 * transparency).roundToInt())
         isOpaque = false
         border = BorderFactory.createEmptyBorder(10, 20, 10, 20)
         
-        // 动画定时器
-        Timer(50) {
-            animationProgress += 0.1f * animationSpeed * animationDirection
+        // 动画定时器 - 使用更平滑的动画
+        Timer(10) {
+            // 平滑过渡动画
+            smoothPosition += (targetPosition - smoothPosition) * 0.2f
+            smoothAlpha += (targetAlpha - smoothAlpha) * 0.2f
+            
+            // 歌词行切换动画
+            animationProgress += 0.02f * animationSpeed * animationDirection
             
             if (animationProgress >= 1f) {
                 animationProgress = 1f
@@ -549,12 +605,21 @@ class LyricsPanel : JPanel() {
         }.start()
     }
     
-    fun setFonts(title: Font, artist: Font, lyric: Font, highlight: Font) {
-        titleFont = title
-        artistFont = artist
-        lyricFont = lyric
-        highlightFont = highlight
+    fun setFonts(chinese: Font, japanese: Font, english: Font) {
+        chineseFont = chinese
+        japaneseFont = japanese
+        englishFont = english
         repaint()
+    }
+    
+    private fun getFontForText(text: String): Font {
+        return when {
+            text.contains("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF]".toRegex()) -> {
+                // 包含中文或日文字符
+                if (text.contains("[\\u4E00-\\u9FFF]".toRegex())) chineseFont else japaneseFont
+            }
+            else -> englishFont // 英文或其他
+        }
     }
     
     fun resetLyrics() {
@@ -563,6 +628,10 @@ class LyricsPanel : JPanel() {
         prevLineIndex = -1
         nextLineIndex = -1
         lyric = ""
+        smoothPosition = 0f
+        targetPosition = 0f
+        smoothAlpha = 0f
+        targetAlpha = 0f
     }
     
     fun updateContent(title: String, artist: String, position: Long, lyric: String?) {
@@ -586,6 +655,10 @@ class LyricsPanel : JPanel() {
             currentLineIndex = newIndex
             animationProgress = 0f
             animationDirection = 1
+            
+            // 设置平滑动画目标值
+            targetPosition = newIndex.toFloat()
+            targetAlpha = 1f
         }
         
         repaint()
@@ -635,23 +708,36 @@ class LyricsPanel : JPanel() {
         return -1
     }
     
+    private fun getTextWidth(g: Graphics2D, text: String): Int {
+        return g.fontMetrics.stringWidth(text)
+    }
+    
+    private fun getTextXPosition(g: Graphics2D, text: String): Int {
+        return when (alignment) {
+            Alignment.LEFT -> 20
+            Alignment.RIGHT -> width - getTextWidth(g, text) - 20
+            else -> (width - getTextWidth(g, text)) / 2 // CENTER
+        }
+    }
+    
     override fun paintComponent(g: Graphics) {
         super.paintComponent(g)
         val g2d = g as Graphics2D
         
         // 设置抗锯齿
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
         
         // 绘制标题和艺术家
-        g2d.font = titleFont
+        g2d.font = getFontForText(title)
         g2d.color = titleColor
-        val titleWidth = g2d.fontMetrics.stringWidth(title)
-        g2d.drawString(title, (width - titleWidth) / 2, 30)
+        val titleX = getTextXPosition(g2d, title)
+        g2d.drawString(title, titleX, 30)
         
-        g2d.font = artistFont
+        g2d.font = getFontForText(artist)
         g2d.color = artistColor
-        val artistWidth = g2d.fontMetrics.stringWidth(artist)
-        g2d.drawString(artist, (width - artistWidth) / 2, 50)
+        val artistX = getTextXPosition(g2d, artist)
+        g2d.drawString(artist, artistX, 50)
         
         // 绘制歌词
         val yPos = height - 50
@@ -659,51 +745,51 @@ class LyricsPanel : JPanel() {
         if (parsedLyrics.isNotEmpty()) {
             // 绘制上一行歌词（淡出）
             if (prevLineIndex in parsedLyrics.indices) {
-                val alpha = (255 * (1 - animationProgress)).toInt()
+                val alpha = (255 * (1 - smoothAlpha)).toInt()
                 val color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, alpha)
                 
                 g2d.color = color
-                g2d.font = lyricFont
+                g2d.font = getFontForText(parsedLyrics[prevLineIndex].text)
                 val prevLine = parsedLyrics[prevLineIndex].text
-                val prevWidth = g2d.fontMetrics.stringWidth(prevLine)
-                val prevY = yPos - (40 * animationProgress).toInt()
-                g2d.drawString(prevLine, (width - prevWidth) / 2, prevY)
+                val prevX = getTextXPosition(g2d, prevLine)
+                val prevY = yPos - (40 * smoothAlpha).toInt()
+                g2d.drawString(prevLine, prevX, prevY)
             }
             
             // 绘制当前行歌词（淡入）
             if (currentLineIndex in parsedLyrics.indices) {
-                val alpha = (255 * animationProgress).toInt()
+                val alpha = (255 * smoothAlpha).toInt()
                 val color = Color(highlightColor.red, highlightColor.green, highlightColor.blue, alpha)
                 
                 g2d.color = color
-                g2d.font = highlightFont
+                g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
                 val currentLine = parsedLyrics[currentLineIndex].text
-                val currentWidth = g2d.fontMetrics.stringWidth(currentLine)
-                val currentY = yPos - (20 * (1 - animationProgress)).toInt()
-                g2d.drawString(currentLine, (width - currentWidth) / 2, currentY)
+                val currentX = getTextXPosition(g2d, currentLine)
+                val currentY = yPos - (20 * (1 - smoothAlpha)).toInt()
+                g2d.drawString(currentLine, currentX, currentY)
             }
             
             // 绘制下一行歌词
             if (currentLineIndex < parsedLyrics.size - 1) {
                 g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
-                g2d.font = lyricFont
+                g2d.font = getFontForText(parsedLyrics[currentLineIndex + 1].text)
                 val nextLine = parsedLyrics[currentLineIndex + 1].text
-                val nextWidth = g2d.fontMetrics.stringWidth(nextLine)
-                g2d.drawString(nextLine, (width - nextWidth) / 2, yPos + 40)
+                val nextX = getTextXPosition(g2d, nextLine)
+                g2d.drawString(nextLine, nextX, yPos + 40)
             }
         } else if (lyric.isNotEmpty()) {
             // 绘制静态歌词
             g2d.color = lyricColor
-            g2d.font = lyricFont
-            val lyricWidth = g2d.fontMetrics.stringWidth(lyric)
-            g2d.drawString(lyric, (width - lyricWidth) / 2, yPos)
+            g2d.font = getFontForText(lyric)
+            val lyricX = getTextXPosition(g2d, lyric)
+            g2d.drawString(lyric, lyricX, yPos)
         } else {
             // 没有歌词时的提示
             g2d.color = Color.LIGHT_GRAY
-            g2d.font = lyricFont
+            g2d.font = chineseFont
             val message = "歌词加载中..."
-            val messageWidth = g2d.fontMetrics.stringWidth(message)
-            g2d.drawString(message, (width - messageWidth) / 2, yPos)
+            val messageX = getTextXPosition(g2d, message)
+            g2d.drawString(message, messageX, yPos)
         }
     }
     
