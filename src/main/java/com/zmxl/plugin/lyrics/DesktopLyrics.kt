@@ -9,9 +9,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import javax.swing.*
-import javax.swing.Timer
 import javax.swing.border.EmptyBorder
-import javax.swing.border.TitledBorder
 import kotlin.math.roundToInt
 
 object DesktopLyrics {
@@ -221,16 +219,6 @@ object DesktopLyrics {
         dialog.layout = BorderLayout()
         dialog.setSize(500, 500)
         dialog.setLocationRelativeTo(frame)
-        
-        // 设置对话框图标
-        try {
-            val iconUrl = javaClass.getResource("/icon.png")
-            if (iconUrl != null) {
-                dialog.iconImage = Toolkit.getDefaultToolkit().getImage(iconUrl)
-            }
-        } catch (e: Exception) {
-            // 忽略图标加载错误
-        }
         
         val tabbedPane = JTabbedPane().apply {
             border = EmptyBorder(10, 10, 10, 10)
