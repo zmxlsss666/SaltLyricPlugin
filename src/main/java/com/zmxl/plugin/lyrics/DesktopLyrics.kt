@@ -233,6 +233,8 @@ object DesktopLyrics {
                     if (!isLocked) {
                         topPanel.isVisible = true
                         updateCursor(e.point)
+                        // 鼠标进入时启用窗口交互
+                        setWindowClickThrough(false)
                     }
                 }
                 
@@ -245,6 +247,8 @@ object DesktopLyrics {
                         
                         if (!panelBounds.contains(point)) {
                             topPanel.isVisible = false
+                            // 鼠标离开时禁用窗口交互（允许点击穿透）
+                            setWindowClickThrough(true)
                         }
                         frame.cursor = Cursor.getDefaultCursor()
                     }
@@ -313,7 +317,41 @@ object DesktopLyrics {
             // 初始状态隐藏控制面板
             topPanel.isVisible = false
             
+            // 初始状态下启用点击穿透
+            setWindowClickThrough(true)
+            
             isVisible = true
+        }
+    }
+    
+    // 设置窗口点击穿透
+    private fun setWindowClickThrough(clickThrough: Boolean) {
+        try {
+            // 使用反射获取窗口句柄
+            val awtWindow = frame
+            val toolkit = Toolkit.getDefaultToolkit()
+            val getWindowMethod = toolkit.javaClass.getDeclaredMethod("getWindow", Window::class.java)
+            getWindowMethod.isAccessible = true
+            val window = getWindowMethod.invoke(toolkit, awtWindow)
+            val getWindowHandleMethod = window.javaClass.getDeclaredMethod("getWindowHandle")
+            getWindowHandleMethod.isAccessible = true
+            val handle = getWindowHandleMethod.invoke(window) as Long
+            
+            val hwnd = WinDef.HWND(com.sun.jna.Pointer.createConstant(handle))
+            
+            // 获取当前窗口样式
+            val currentStyle = User32.INSTANCE.GetWindowLong(hwnd, User32.GWL_EXSTYLE)
+            
+            // 设置或移除WS_EX_TRANSPARENT和WS_EX_LAYERED样式
+            val newStyle = if (clickThrough) {
+                currentStyle or User32.WS_EX_TRANSPARENT or User32.WS_EX_LAYERED
+            } else {
+                currentStyle and (User32.WS_EX_TRANSPARENT.inv()) and (User32.WS_EX_LAYERED.inv())
+            }
+            
+            User32.INSTANCE.SetWindowLong(hwnd, User32.GWL_EXSTYLE, newStyle)
+        } catch (e: Exception) {
+            println("设置窗口点击穿透失败: ${e.message}")
         }
     }
     
@@ -432,11 +470,18 @@ object DesktopLyrics {
             lockButton.text = "🔒"
             topPanel.isVisible = false
             disableAcrylicEffect()
+            // 锁定状态下启用点击穿透
+            setWindowClickThrough(true)
         } else {
             lockButton.text = "🔓"
             // 解锁后，如果鼠标在窗口内，启用毛玻璃效果
             if (frame.mousePosition != null) {
                 enableAcrylicEffect(200)
+                // 鼠标在窗口内时禁用点击穿透
+                setWindowClickThrough(false)
+            } else {
+                // 鼠标不在窗口内时启用点击穿透
+                setWindowClickThrough(true)
             }
         }
     }
