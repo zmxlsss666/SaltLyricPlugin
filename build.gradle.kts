@@ -17,8 +17,8 @@ kotlin {
 
 dependencies {
     // SPW API
-    compileOnly("com.github.Moriafly:spw-workshop-api:0.1.0-dev06")
-    kapt("com.github.Moriafly:spw-workshop-api:0.1.0-dev06")
+    compileOnly("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
+    kapt("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
     
     // Jetty HTTP服务器
     implementation("org.eclipse.jetty:jetty-server:11.0.15")
@@ -59,3 +59,4 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
