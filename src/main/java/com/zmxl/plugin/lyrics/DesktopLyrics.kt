@@ -42,6 +42,9 @@ object DesktopLyrics {
     private lateinit var settingsButton: JButton
     private lateinit var minimizeButton: JButton
     
+    // 背景面板
+    private lateinit var backgroundPanel: JPanel
+    
     fun start() {
         setupUI()
         timer.start()
@@ -59,6 +62,13 @@ object DesktopLyrics {
             background = Color(0, 0, 0, 0)
             setAlwaysOnTop(true)
             
+            // 创建背景面板（半透明黑色）
+            backgroundPanel = JPanel(BorderLayout()).apply {
+                background = Color(0, 0, 0, 180)
+                isOpaque = true
+                isVisible = false // 默认隐藏
+            }
+            
             // 创建内容面板
             contentPane = JPanel(BorderLayout()).apply {
                 background = Color(0, 0, 0, 0)
@@ -67,8 +77,11 @@ object DesktopLyrics {
                 // 添加歌词面板
                 add(lyricsPanel, BorderLayout.CENTER)
                 
-                // 添加顶部控制栏
-                add(createTopControlBar(), BorderLayout.NORTH)
+                // 添加顶部控制栏到背景面板
+                backgroundPanel.add(createTopControlBar(), BorderLayout.NORTH)
+                
+                // 添加背景面板
+                add(backgroundPanel, BorderLayout.NORTH)
             }
             
             // 设置窗口大小和位置
@@ -103,22 +116,13 @@ object DesktopLyrics {
                 
                 override fun mouseEntered(e: MouseEvent) {
                     if (!isLocked) {
-                        controlPanel.isVisible = true
-                        titleArtistLabel.isVisible = true
+                        backgroundPanel.isVisible = true
                     }
                 }
                 
                 override fun mouseExited(e: MouseEvent) {
                     if (!isLocked) {
-                        // 只有当鼠标不在控制面板上时才隐藏
-                        val point = MouseInfo.getPointerInfo().location
-                        val panelBounds = controlPanel.bounds
-                        panelBounds.location = controlPanel.locationOnScreen
-                        
-                        if (!panelBounds.contains(point)) {
-                            controlPanel.isVisible = false
-                            titleArtistLabel.isVisible = false
-                        }
+                        backgroundPanel.isVisible = false
                     }
                 }
             })
@@ -140,18 +144,14 @@ object DesktopLyrics {
                 setupSystemTray()
             }
             
-            // 初始状态隐藏控制面板
-            controlPanel.isVisible = false
-            titleArtistLabel.isVisible = false
-            
             isVisible = true
         }
     }
     
     private fun createTopControlBar(): JPanel {
         return JPanel(BorderLayout()).apply {
-            background = Color(0, 0, 0, 180)
-            isOpaque = true
+            background = Color(0, 0, 0, 0)
+            isOpaque = false
             border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
             preferredSize = Dimension(frame.width, 40)
             
@@ -246,10 +246,13 @@ object DesktopLyrics {
         
         if (isLocked) {
             lockButton.text = "🔒"
-            controlPanel.isVisible = false
-            titleArtistLabel.isVisible = false
+            backgroundPanel.isVisible = false
         } else {
             lockButton.text = "🔓"
+            // 解锁后，如果鼠标在窗口内，显示背景
+            if (frame.mousePosition != null) {
+                backgroundPanel.isVisible = true
+            }
         }
     }
     
@@ -935,7 +938,7 @@ class LyricsPanel : JPanel() {
     // 颜色设置
     var lyricColor = Color.WHITE
     var highlightColor = Color(255, 215, 0) // 金色
-    var backgroundColor = Color(0, 0, 0, 180) // 背景颜色 - 半透明黑色
+    var backgroundColor = Color(0, 0, 0, 0) // 背景颜色 - 完全透明
     
     // 动画状态
     private var animationProgress = 0f
@@ -955,7 +958,7 @@ class LyricsPanel : JPanel() {
     
     init {
         background = backgroundColor
-        isOpaque = true
+        isOpaque = false // 设置为不透明，使背景透明
         border = BorderFactory.createEmptyBorder(10, 20, 10, 20)
         
         // 动画定时器 - 使用更平滑的动画
