@@ -311,33 +311,23 @@ object DesktopLyrics {
         val image = createTrayIconImage()
         val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
         
-        // 使用中文菜单项，设置字体避免乱码
+        // 使用中文菜单项
         val popup = PopupMenu()
-        
-        // 设置字体
-        val font = Font("微软雅黑", Font.PLAIN, 12)
-        val fontField = popup.javaClass.getDeclaredField("font")
-        fontField.isAccessible = true
-        fontField.set(popup, font)
         
         // 添加显示/隐藏菜单
         val toggleItem = MenuItem("显示/隐藏")
-        toggleItem.font = font
         toggleItem.addActionListener { frame.isVisible = !frame.isVisible }
         
         // 添加锁定/解锁菜单
         val lockItem = MenuItem(if (isLocked) "解锁" else "锁定")
-        lockItem.font = font
         lockItem.addActionListener { toggleLock() }
         
         // 添加设置菜单
         val settingsItem = MenuItem("设置")
-        settingsItem.font = font
         settingsItem.addActionListener { showSettingsDialog() }
         
         // 添加退出菜单
         val exitItem = MenuItem("退出")
-        exitItem.font = font
         exitItem.addActionListener { exitApplication() }
         
         popup.add(toggleItem)
@@ -345,6 +335,13 @@ object DesktopLyrics {
         popup.add(settingsItem)
         popup.addSeparator()
         popup.add(exitItem)
+        
+        // 设置菜单项字体（避免乱码）
+        val font = Font("微软雅黑", Font.PLAIN, 12)
+        for (i in 0 until popup.itemCount) {
+            val item = popup.getItem(i)
+            item.font = font
+        }
         
         trayIcon.popupMenu = popup
         trayIcon.addActionListener { frame.isVisible = !frame.isVisible }
