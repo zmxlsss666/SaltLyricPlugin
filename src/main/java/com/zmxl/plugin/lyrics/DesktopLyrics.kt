@@ -87,7 +87,7 @@ object DesktopLyrics {
     @Structure.FieldOrder("Attribute", "Data", "SizeOfData")
     class WindowCompositionAttributeData : Structure() {
         @JvmField var Attribute: Int = 0
-        @JvmField var Data: Pointer? = null
+        @JvmField var Data: com.sun.jna.Pointer? = null
         @JvmField var SizeOfData: Int = 0
     }
     
@@ -107,7 +107,17 @@ object DesktopLyrics {
     // 启用Windows毛玻璃效果
     private fun enableAcrylicEffect(alpha: Int) {
         try {
-            val hwnd = WinDef.HWND(Native.getComponentPointer(frame))
+            // 使用反射获取窗口句柄
+            val awtWindow = frame
+            val toolkit = Toolkit.getDefaultToolkit()
+            val getWindowMethod = toolkit.javaClass.getDeclaredMethod("getWindow", Window::class.java)
+            getWindowMethod.isAccessible = true
+            val window = getWindowMethod.invoke(toolkit, awtWindow)
+            val getWindowHandleMethod = window.javaClass.getDeclaredMethod("getWindowHandle")
+            getWindowHandleMethod.isAccessible = true
+            val handle = getWindowHandleMethod.invoke(window) as Long
+            
+            val hwnd = WinDef.HWND(com.sun.jna.Pointer.createConstant(handle))
             val accent = AccentPolicy()
             accent.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND
             accent.AccentFlags = 2 // 启用窗口边框颜色
@@ -121,13 +131,25 @@ object DesktopLyrics {
             User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
         } catch (e: Exception) {
             println("启用毛玻璃效果失败: ${e.message}")
+            // 备用方案：使用半透明背景
+            frame.background = Color(0, 0, 0, (alpha / 255f * 180).roundToInt())
         }
     }
     
     // 禁用毛玻璃效果
     private fun disableAcrylicEffect() {
         try {
-            val hwnd = WinDef.HWND(Native.getComponentPointer(frame))
+            // 使用反射获取窗口句柄
+            val awtWindow = frame
+            val toolkit = Toolkit.getDefaultToolkit()
+            val getWindowMethod = toolkit.javaClass.getDeclaredMethod("getWindow", Window::class.java)
+            getWindowMethod.isAccessible = true
+            val window = getWindowMethod.invoke(toolkit, awtWindow)
+            val getWindowHandleMethod = window.javaClass.getDeclaredMethod("getWindowHandle")
+            getWindowHandleMethod.isAccessible = true
+            val handle = getWindowHandleMethod.invoke(window) as Long
+            
+            val hwnd = WinDef.HWND(com.sun.jna.Pointer.createConstant(handle))
             val accent = AccentPolicy()
             accent.AccentState = 0 // 禁用特效
             
@@ -139,6 +161,8 @@ object DesktopLyrics {
             User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
         } catch (e: Exception) {
             println("禁用毛玻璃效果失败: ${e.message}")
+            // 备用方案：恢复透明背景
+            frame.background = Color(0, 0, 0, 0)
         }
     }
     
@@ -289,7 +313,7 @@ object DesktopLyrics {
             }
             
             // 右侧功能按钮
-            val rightPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 5, 0)).apply {
+            val rightPanel = JPanel(FlowLayout(FlowLayout.RRIGHT, 5, 0)).apply {
                 background = Color(0, 0, 0, 0)
                 isOpaque = false
                 
@@ -812,7 +836,7 @@ object DesktopLyrics {
             }, gbc)
             
             gbc.gridx = 1
-            val alignmentCombo = JComboBox(arrayOf("居中", "左对齐", "右")).apply {
+            val alignmentCombo = JComboBox(arrayOf("居中", "左对齐", "右对齐")).apply {
                 selectedIndex = when (lyricsPanel.alignment) {
                     LyricsPanel.Alignment.LEFT -> 1
                     LyricsPanel.Alignment.RIGHT -> 2
