@@ -1,6 +1,9 @@
 package com.zmxl.plugin.lyrics
 
 import com.google.gson.Gson
+import com.sun.jna.Native
+import com.sun.jna.Structure
+import com.sun.jna.platform.win32.WinDef
 import java.awt.*
 import java.awt.event.*
 import java.awt.image.BufferedImage
@@ -42,17 +45,101 @@ object DesktopLyrics {
     private lateinit var settingsButton: JButton
     private lateinit var minimizeButton: JButton
     
-    // 背景面板
-    private lateinit var backgroundPanel: JPanel
+    // 毛玻璃效果相关
+    private var backgroundAlpha = 0f
+    private val backgroundTimer = Timer(16) {
+        val targetAlpha = if (frame.mousePosition != null && !isLocked) 0.9f else 0f
+        backgroundAlpha += (targetAlpha - backgroundAlpha) * 0.15f // 更平滑的过渡
+        
+        if (backgroundAlpha < 0.01f) {
+            // 完全透明时禁用毛玻璃效果
+            disableAcrylicEffect()
+        } else {
+            // 启用毛玻璃效果
+            enableAcrylicEffect((backgroundAlpha * 255).roundToInt())
+        }
+        
+        frame.repaint()
+    }
+    
+    // JNA接口定义
+    interface User32Ex : com.sun.jna.platform.win32.User32 {
+        fun SetWindowCompositionAttribute(hWnd: WinDef.HWND, data: WindowCompositionAttributeData): Boolean
+        
+        companion object {
+            val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java) as User32Ex
+        }
+    }
+    
+    // Windows API常量
+    private val ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
+    private val WCA_ACCENT_POLICY = 19
+    
+    // JNA结构体定义
+    @Structure.FieldOrder("AccentState", "AccentFlags", "GradientColor", "AnimationId")
+    class AccentPolicy : Structure() {
+        @JvmField var AccentState: Int = 0
+        @JvmField var AccentFlags: Int = 0
+        @JvmField var GradientColor: Int = 0
+        @JvmField var AnimationId: Int = 0
+    }
+    
+    @Structure.FieldOrder("Attribute", "Data", "SizeOfData")
+    class WindowCompositionAttributeData : Structure() {
+        @JvmField var Attribute: Int = 0
+        @JvmField var Data: Pointer? = null
+        @JvmField var SizeOfData: Int = 0
+    }
     
     fun start() {
         setupUI()
         timer.start()
+        backgroundTimer.start()
     }
     
     fun stop() {
         timer.stop()
+        backgroundTimer.stop()
+        disableAcrylicEffect()
         frame.dispose()
+    }
+    
+    // 启用Windows毛玻璃效果
+    private fun enableAcrylicEffect(alpha: Int) {
+        try {
+            val hwnd = WinDef.HWND(Native.getComponentPointer(frame))
+            val accent = AccentPolicy()
+            accent.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND
+            accent.AccentFlags = 2 // 启用窗口边框颜色
+            accent.GradientColor = (alpha shl 24) or 0x000000 // ARGB格式，A=alpha, RGB=黑色
+            
+            val data = WindowCompositionAttributeData()
+            data.Attribute = WCA_ACCENT_POLICY
+            data.Data = accent.pointer
+            data.SizeOfData = accent.size()
+            
+            User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
+        } catch (e: Exception) {
+            println("启用毛玻璃效果失败: ${e.message}")
+        }
+    }
+    
+    // 禁用毛玻璃效果
+    private fun disableAcrylicEffect() {
+        try {
+            val hwnd = WinDef.HWND(Native.getComponentPointer(frame))
+            val accent = AccentPolicy()
+            accent.AccentState = 0 // 禁用特效
+            
+            val data = WindowCompositionAttributeData()
+            data.Attribute = WCA_ACCENT_POLICY
+            data.Data = accent.pointer
+            data.SizeOfData = accent.size()
+            
+            User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
+        } catch (e: Exception) {
+            println("禁用毛玻璃效果失败: ${e.message}")
+        }
     }
     
     private fun setupUI() {
@@ -62,13 +149,6 @@ object DesktopLyrics {
             background = Color(0, 0, 0, 0)
             setAlwaysOnTop(true)
             
-            // 创建背景面板（半透明黑色）
-            backgroundPanel = JPanel(BorderLayout()).apply {
-                background = Color(0, 0, 0, 180)
-                isOpaque = true
-                isVisible = false // 默认隐藏
-            }
-            
             // 创建内容面板
             contentPane = JPanel(BorderLayout()).apply {
                 background = Color(0, 0, 0, 0)
@@ -77,11 +157,8 @@ object DesktopLyrics {
                 // 添加歌词面板
                 add(lyricsPanel, BorderLayout.CENTER)
                 
-                // 添加顶部控制栏到背景面板
-                backgroundPanel.add(createTopControlBar(), BorderLayout.NORTH)
-                
-                // 添加背景面板
-                add(backgroundPanel, BorderLayout.NORTH)
+                // 添加顶部控制栏
+                add(createTopControlBar(), BorderLayout.NORTH)
             }
             
             // 设置窗口大小和位置
@@ -116,13 +193,22 @@ object DesktopLyrics {
                 
                 override fun mouseEntered(e: MouseEvent) {
                     if (!isLocked) {
-                        backgroundPanel.isVisible = true
+                        controlPanel.isVisible = true
+                        titleArtistLabel.isVisible = true
                     }
                 }
                 
                 override fun mouseExited(e: MouseEvent) {
                     if (!isLocked) {
-                        backgroundPanel.isVisible = false
+                        // 只有当鼠标不在控制面板上时才隐藏
+                        val point = MouseInfo.getPointerInfo().location
+                        val panelBounds = controlPanel.bounds
+                        panelBounds.location = controlPanel.locationOnScreen
+                        
+                        if (!panelBounds.contains(point)) {
+                            controlPanel.isVisible = false
+                            titleArtistLabel.isVisible = false
+                        }
                     }
                 }
             })
@@ -143,6 +229,10 @@ object DesktopLyrics {
             if (SystemTray.isSupported()) {
                 setupSystemTray()
             }
+            
+            // 初始状态隐藏控制面板
+            controlPanel.isVisible = false
+            titleArtistLabel.isVisible = false
             
             isVisible = true
         }
@@ -246,12 +336,14 @@ object DesktopLyrics {
         
         if (isLocked) {
             lockButton.text = "🔒"
-            backgroundPanel.isVisible = false
+            controlPanel.isVisible = false
+            titleArtistLabel.isVisible = false
+            disableAcrylicEffect()
         } else {
             lockButton.text = "🔓"
-            // 解锁后，如果鼠标在窗口内，显示背景
+            // 解锁后，如果鼠标在窗口内，启用毛玻璃效果
             if (frame.mousePosition != null) {
-                backgroundPanel.isVisible = true
+                enableAcrylicEffect(200)
             }
         }
     }
@@ -720,7 +812,7 @@ object DesktopLyrics {
             }, gbc)
             
             gbc.gridx = 1
-            val alignmentCombo = JComboBox(arrayOf("居中", "左对齐", "右对齐")).apply {
+            val alignmentCombo = JComboBox(arrayOf("居中", "左对齐", "右")).apply {
                 selectedIndex = when (lyricsPanel.alignment) {
                     LyricsPanel.Alignment.LEFT -> 1
                     LyricsPanel.Alignment.RIGHT -> 2
