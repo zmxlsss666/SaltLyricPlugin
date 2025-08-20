@@ -31,6 +31,16 @@ object DesktopLyrics {
     private var japaneseFont = Font("MS Gothic", Font.BOLD, 24)
     private var englishFont = Font("Arial", Font.BOLD, 24)
     
+    // 动画样式
+    var animationStyle = AnimationStyle.SLIDE
+    
+    enum class AnimationStyle {
+        NONE,       // 无动画
+        FADE,       // 淡入淡出
+        SLIDE,      // 滑动
+        BOUNCE      // 弹跳
+    }
+    
     fun start() {
         setupUI()
         timer.start()
@@ -190,22 +200,16 @@ object DesktopLyrics {
         val image = createTrayIconImage()
         val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
         
-        // 使用Unicode字体避免乱码
-        val popup = PopupMenu().apply {
-            font = Font("微软雅黑", Font.PLAIN, 12)
-        }
+        // 使用系统默认字体，避免乱码
+        val popup = PopupMenu()
         
         // 添加设置菜单
-        val settingsItem = MenuItem("设置").apply {
-            font = Font("微软雅黑", Font.PLAIN, 12)
-            addActionListener { showSettingsDialog() }
-        }
+        val settingsItem = MenuItem("设置")
+        settingsItem.addActionListener { showSettingsDialog() }
         
         // 添加退出菜单
-        val exitItem = MenuItem("退出").apply {
-            font = Font("微软雅黑", Font.PLAIN, 12)
-            addActionListener { exitApplication() }
-        }
+        val exitItem = MenuItem("退出")
+        exitItem.addActionListener { exitApplication() }
         
         popup.add(settingsItem)
         popup.addSeparator()
@@ -224,7 +228,7 @@ object DesktopLyrics {
     private fun showSettingsDialog() {
         val dialog = JDialog(frame, "桌面歌词设置", true)
         dialog.layout = BorderLayout()
-        dialog.setSize(500, 500)
+        dialog.setSize(500, 550)
         dialog.setLocationRelativeTo(frame)
         
         val tabbedPane = JTabbedPane()
@@ -355,9 +359,19 @@ object DesktopLyrics {
             add(highlightColorButton)
         }
         
-        // 其他设置面板
-        val otherPanel = JPanel(GridLayout(0, 2, 10, 10)).apply {
+        // 动画设置面板
+        val animationPanel = JPanel(GridLayout(0, 2, 10, 10)).apply {
             border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
+            
+            // 动画样式选择
+            add(JLabel("动画样式:"))
+            val animationStyleCombo = JComboBox(AnimationStyle.values())
+            animationStyleCombo.selectedItem = animationStyle
+            animationStyleCombo.addActionListener {
+                animationStyle = animationStyleCombo.selectedItem as AnimationStyle
+                lyricsPanel.animationStyle = animationStyle
+            }
+            add(animationStyleCombo)
             
             // 透明度设置
             add(JLabel("窗口透明度:"))
@@ -399,7 +413,7 @@ object DesktopLyrics {
         
         tabbedPane.addTab("字体", fontPanel)
         tabbedPane.addTab("颜色", colorPanel)
-        tabbedPane.addTab("其他", otherPanel)
+        tabbedPane.addTab("动画", animationPanel)
         
         dialog.add(tabbedPane, BorderLayout.CENTER)
         
@@ -551,6 +565,7 @@ class LyricsPanel : JPanel() {
     var transparency = 0.8f
     var animationSpeed = 10
     var alignment = Alignment.CENTER
+    var animationStyle = DesktopLyrics.AnimationStyle.SLIDE
     
     // 字体设置
     private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
@@ -575,6 +590,10 @@ class LyricsPanel : JPanel() {
     private var smoothAlpha = 0f
     private var targetAlpha = 0f
     
+    // 弹跳动画相关
+    private var bounceHeight = 0f
+    private var bounceDirection = 1f
+    
     enum class Alignment {
         LEFT, CENTER, RIGHT
     }
@@ -586,9 +605,31 @@ class LyricsPanel : JPanel() {
         
         // 动画定时器 - 使用更平滑的动画
         Timer(10) {
-            // 平滑过渡动画
-            smoothPosition += (targetPosition - smoothPosition) * 0.2f
-            smoothAlpha += (targetAlpha - smoothAlpha) * 0.2f
+            when (animationStyle) {
+                DesktopLyrics.AnimationStyle.NONE -> {
+                    // 无动画，直接显示
+                }
+                DesktopLyrics.AnimationStyle.FADE -> {
+                    // 淡入淡出动画
+                    smoothAlpha += (targetAlpha - smoothAlpha) * 0.2f
+                }
+                DesktopLyrics.AnimationStyle.SLIDE -> {
+                    // 滑动动画
+                    smoothPosition += (targetPosition - smoothPosition) * 0.2f
+                    smoothAlpha += (targetAlpha - smoothAlpha) * 0.2f
+                }
+                DesktopLyrics.AnimationStyle.BOUNCE -> {
+                    // 弹跳动画
+                    bounceHeight += 0.1f * bounceDirection
+                    if (bounceHeight > 1f) {
+                        bounceHeight = 1f
+                        bounceDirection = -1f
+                    } else if (bounceHeight < 0f) {
+                        bounceHeight = 0f
+                        bounceDirection = 1f
+                    }
+                }
+            }
             
             // 歌词行切换动画
             animationProgress += 0.02f * animationSpeed * animationDirection
@@ -632,6 +673,8 @@ class LyricsPanel : JPanel() {
         targetPosition = 0f
         smoothAlpha = 0f
         targetAlpha = 0f
+        bounceHeight = 0f
+        bounceDirection = 1f
     }
     
     fun updateContent(title: String, artist: String, position: Long, lyric: String?) {
@@ -659,6 +702,10 @@ class LyricsPanel : JPanel() {
             // 设置平滑动画目标值
             targetPosition = newIndex.toFloat()
             targetAlpha = 1f
+            
+            // 重置弹跳动画
+            bounceHeight = 0f
+            bounceDirection = 1f
         }
         
         repaint()
@@ -743,34 +790,82 @@ class LyricsPanel : JPanel() {
         val yPos = height - 50
         
         if (parsedLyrics.isNotEmpty()) {
-            // 绘制上一行歌词（淡出）
-            if (prevLineIndex in parsedLyrics.indices) {
-                val alpha = (255 * (1 - smoothAlpha)).toInt()
-                val color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, alpha)
-                
-                g2d.color = color
-                g2d.font = getFontForText(parsedLyrics[prevLineIndex].text)
-                val prevLine = parsedLyrics[prevLineIndex].text
-                val prevX = getTextXPosition(g2d, prevLine)
-                val prevY = yPos - (40 * smoothAlpha).toInt()
-                g2d.drawString(prevLine, prevX, prevY)
-            }
-            
-            // 绘制当前行歌词（淡入）
-            if (currentLineIndex in parsedLyrics.indices) {
-                val alpha = (255 * smoothAlpha).toInt()
-                val color = Color(highlightColor.red, highlightColor.green, highlightColor.blue, alpha)
-                
-                g2d.color = color
-                g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
-                val currentLine = parsedLyrics[currentLineIndex].text
-                val currentX = getTextXPosition(g2d, currentLine)
-                val currentY = yPos - (20 * (1 - smoothAlpha)).toInt()
-                g2d.drawString(currentLine, currentX, currentY)
+            when (animationStyle) {
+                DesktopLyrics.AnimationStyle.NONE -> {
+                    // 无动画，直接显示当前歌词
+                    if (currentLineIndex in parsedLyrics.indices) {
+                        g2d.color = highlightColor
+                        g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
+                        val currentLine = parsedLyrics[currentLineIndex].text
+                        val currentX = getTextXPosition(g2d, currentLine)
+                        g2d.drawString(currentLine, currentX, yPos)
+                    }
+                }
+                DesktopLyrics.AnimationStyle.FADE -> {
+                    // 淡入淡出动画
+                    if (prevLineIndex in parsedLyrics.indices) {
+                        val alpha = (255 * (1 - smoothAlpha)).toInt()
+                        val color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, alpha)
+                        
+                        g2d.color = color
+                        g2d.font = getFontForText(parsedLyrics[prevLineIndex].text)
+                        val prevLine = parsedLyrics[prevLineIndex].text
+                        val prevX = getTextXPosition(g2d, prevLine)
+                        g2d.drawString(prevLine, prevX, yPos)
+                    }
+                    
+                    if (currentLineIndex in parsedLyrics.indices) {
+                        val alpha = (255 * smoothAlpha).toInt()
+                        val color = Color(highlightColor.red, highlightColor.green, highlightColor.blue, alpha)
+                        
+                        g2d.color = color
+                        g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
+                        val currentLine = parsedLyrics[currentLineIndex].text
+                        val currentX = getTextXPosition(g2d, currentLine)
+                        g2d.drawString(currentLine, currentX, yPos)
+                    }
+                }
+                DesktopLyrics.AnimationStyle.SLIDE -> {
+                    // 滑动动画
+                    if (prevLineIndex in parsedLyrics.indices) {
+                        val alpha = (255 * (1 - smoothAlpha)).toInt()
+                        val color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, alpha)
+                        
+                        g2d.color = color
+                        g2d.font = getFontForText(parsedLyrics[prevLineIndex].text)
+                        val prevLine = parsedLyrics[prevLineIndex].text
+                        val prevX = getTextXPosition(g2d, prevLine)
+                        val prevY = yPos - (40 * smoothAlpha).toInt()
+                        g2d.drawString(prevLine, prevX, prevY)
+                    }
+                    
+                    if (currentLineIndex in parsedLyrics.indices) {
+                        val alpha = (255 * smoothAlpha).toInt()
+                        val color = Color(highlightColor.red, highlightColor.green, highlightColor.blue, alpha)
+                        
+                        g2d.color = color
+                        g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
+                        val currentLine = parsedLyrics[currentLineIndex].text
+                        val currentX = getTextXPosition(g2d, currentLine)
+                        val currentY = yPos - (20 * (1 - smoothAlpha)).toInt()
+                        g2d.drawString(currentLine, currentX, currentY)
+                    }
+                }
+                DesktopLyrics.AnimationStyle.BOUNCE -> {
+                    // 弹跳动画
+                    if (currentLineIndex in parsedLyrics.indices) {
+                        g2d.color = highlightColor
+                        g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
+                        val currentLine = parsedLyrics[currentLineIndex].text
+                        val currentX = getTextXPosition(g2d, currentLine)
+                        val bounceOffset = (bounceHeight * 20).toInt()
+                        g2d.drawString(currentLine, currentX, yPos - bounceOffset)
+                    }
+                }
             }
             
             // 绘制下一行歌词
-            if (currentLineIndex < parsedLyrics.size - 1) {
+            if (currentLineIndex < parsedLyrics.size - 1 && animationStyle != DesktopLyrics.AnimationStyle.BOUNCE) {
                 g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
                 g2d.font = getFontForText(parsedLyrics[currentLineIndex + 1].text)
                 val nextLine = parsedLyrics[currentLineIndex + 1].text
