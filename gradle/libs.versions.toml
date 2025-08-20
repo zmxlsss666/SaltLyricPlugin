@@ -1,6 +1,6 @@
 [versions]
 kotlin = "2.0.21"
-spw-workshop-api = "0.1.0-dev05"
+spw-workshop-api = "0.1.0-dev08"
 spark = "2.9.4"
 jna = "5.14.0"
 gson = "2.10.1"
@@ -17,4 +17,5 @@ slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version.ref = "slf4
 
 [plugins]
 jetbrainsKotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+
 jetbrainsKotlinKapt = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
