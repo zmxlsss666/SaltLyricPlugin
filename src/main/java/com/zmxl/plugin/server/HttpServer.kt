@@ -331,7 +331,7 @@ class HttpServer(private val port: Int) {
                     val response = mapOf(
                         "status" to "success",
                         "lyric" to lyricContent,
-                        "source" to "network"
+                        "source" to "163"
                     )
                     resp.writer.write(Gson().toJson(response))
                     return
@@ -353,11 +353,6 @@ class HttpServer(private val port: Int) {
                             append(formatTimeTag(currentLine.time))
                             append(currentLine.text)
                             append("\n")
-                        }
-                        
-                        if (nextLine != null) {
-                            append(formatTimeTag(nextLine.time))
-                            append(nextLine.text)
                         }
                     }
                     
@@ -493,3 +488,4 @@ class HttpServer(private val port: Int) {
         }
     }
 }
+
