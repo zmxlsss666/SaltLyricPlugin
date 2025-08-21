@@ -180,10 +180,16 @@ object DesktopLyrics {
             background = Color(0, 0, 0, 0)
             setAlwaysOnTop(true)
             
+            // 关键修复：确保窗口不会获取焦点或阻止其他应用程序
+            isFocusable = false
+            isFocusableWindowState = false
+            focusableWindowState = false
+            
             // 创建内容面板
             contentPane = JPanel(BorderLayout()).apply {
                 background = Color(0, 0, 0, 0)
                 isOpaque = false
+                isFocusable = false // 确保面板也不会获取焦点
                 
                 // 添加歌词面板
                 add(lyricsPanel, BorderLayout.CENTER)
@@ -309,6 +315,31 @@ object DesktopLyrics {
                     isWindowVisible = true
                 }
             })
+            
+            // 关键修复：确保窗口不会阻止其他应用程序
+            try {
+                // 使用反射设置窗口类型为工具窗口，这样它不会获取焦点
+                val awtWindow = this
+                val toolkit = Toolkit.getDefaultToolkit()
+                val getWindowMethod = toolkit.javaClass.getDeclaredMethod("getWindow", Window::class.java)
+                getWindowMethod.isAccessible = true
+                val window = getWindowMethod.invoke(toolkit, awtWindow)
+                val getWindowHandleMethod = window.javaClass.getDeclaredMethod("getWindowHandle")
+                getWindowHandleMethod.isAccessible = true
+                val handle = getWindowHandleMethod.invoke(window) as Long
+                
+                val hwnd = WinDef.HWND(com.sun.jna.Pointer.createConstant(handle))
+                
+                // 获取当前窗口样式
+                val currentStyle = User32.INSTANCE.GetWindowLong(hwnd, User32.GWL_EXSTYLE)
+                
+                // 设置窗口为工具窗口样式，这样它不会出现在任务栏上，也不会获取焦点
+                val newStyle = currentStyle or User32.WS_EX_TOOLWINDOW
+                
+                User32.INSTANCE.SetWindowLong(hwnd, User32.GWL_EXSTYLE, newStyle)
+            } catch (e: Exception) {
+                println("设置窗口工具样式失败: ${e.message}")
+            }
             
             // 添加系统托盘图标
             if (SystemTray.isSupported()) {
@@ -540,8 +571,6 @@ object DesktopLyrics {
         }.start()
     }
     
-    private var awtEventListener: AWTEventListener? = null
-    
     private fun setupSystemTray() {
         if (!SystemTray.isSupported()) {
             println("系统托盘不支持")
@@ -552,143 +581,63 @@ object DesktopLyrics {
         val image = createTrayIconImage()
         val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
         
-        // 创建自定义的Swing弹出菜单
-        val popupMenu = JPopupMenu().apply {
-            background = Color(240, 240, 240)
-            border = BorderFactory.createLineBorder(Color(200, 200, 200))
-            isLightWeightPopupEnabled = true // 启用轻量级弹出菜单
-        }
+        // 使用AWT的PopupMenu
+        val popup = PopupMenu()
         
-        // 添加显示/隐藏菜单项
-        val toggleItem = JMenuItem("显示/隐藏").apply {
-            font = createChineseFont()
-            addActionListener {
-                frame.isVisible = !frame.isVisible
-                isWindowVisible = frame.isVisible
-                if (frame.isVisible) {
-                    updateLyrics()
-                }
-                popupMenu.isVisible = false
+        // 添加显示/隐藏菜单
+        val toggleItem = MenuItem("显示/隐藏")
+        toggleItem.addActionListener { 
+            frame.isVisible = !frame.isVisible
+            isWindowVisible = frame.isVisible
+            if (frame.isVisible) {
+                updateLyrics()
             }
         }
-        popupMenu.add(toggleItem)
         
-        // 添加锁定/解锁菜单项
-        val lockItem = JMenuItem(if (isLocked) "解锁" else "锁定").apply {
-            font = createChineseFont()
-            addActionListener {
-                toggleLock()
-                popupMenu.isVisible = false
+        // 添加锁定/解锁菜单
+        val lockItem = MenuItem(if (isLocked) "解锁" else "锁定")
+        lockItem.addActionListener { toggleLock() }
+        
+        // 添加设置菜单
+        val settingsItem = MenuItem("设置")
+        settingsItem.addActionListener { showSettingsDialog() }
+        
+        // 添加退出菜单
+        val exitItem = MenuItem("退出")
+        exitItem.addActionListener { exitApplication() }
+        
+        popup.add(toggleItem)
+        popup.add(lockItem)
+        popup.add(settingsItem)
+        popup.addSeparator()
+        popup.add(exitItem)
+        
+        // 设置菜单字体，使用Unicode转义序列和系统字体
+        try {
+            // 使用系统默认字体，但设置合适的字号
+            val font = Font(Font.DIALOG, Font.PLAIN, 12)
+            for (i in 0 until popup.itemCount) {
+                popup.getItem(i).font = font
             }
-        }
-        popupMenu.add(lockItem)
-        
-        // 添加设置菜单项
-        val settingsItem = JMenuItem("设置").apply {
-            font = createChineseFont()
-            addActionListener {
-                showSettingsDialog()
-                popupMenu.isVisible = false
-            }
-        }
-        popupMenu.add(settingsItem)
-        
-        popupMenu.add(JSeparator())
-        
-        // 添加退出菜单项
-        val exitItem = JMenuItem("退出").apply {
-            font = createChineseFont()
-            addActionListener {
-                exitApplication()
-                popupMenu.isVisible = false
-            }
-        }
-        popupMenu.add(exitItem)
-        
-        // 创建透明的JWindow作为弹出菜单的父容器
-        val popupWindow = JWindow().apply {
-            background = Color(0, 0, 0, 0) // 完全透明
-            isAlwaysOnTop = true
+        } catch (e: Exception) {
+            println("设置菜单字体失败: ${e.message}")
         }
         
-        // 为系统托盘图标添加鼠标监听器
-        trayIcon.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                if (e.button == MouseEvent.BUTTON1) {
-                    // 左键点击 - 切换窗口显示/隐藏
-                    frame.isVisible = !frame.isVisible
-                    isWindowVisible = frame.isVisible
-                    if (frame.isVisible) {
-                        updateLyrics()
-                    }
-                } else if (e.button == MouseEvent.BUTTON3) {
-                    // 右键点击 - 显示自定义菜单
-                    val mousePos = MouseInfo.getPointerInfo().location
-                    
-                    // 设置弹出窗口位置
-                    popupWindow.setLocation(mousePos.x, mousePos.y)
-                    popupWindow.isVisible = true
-                    
-                    // 显示菜单
-                    popupMenu.show(popupWindow.contentPane, 0, 0)
-                    
-                    // 移除之前的监听器（如果有）
-                    awtEventListener?.let {
-                        Toolkit.getDefaultToolkit().removeAWTEventListener(it)
-                    }
-                    
-                    // 创建新的监听器
-                    awtEventListener = AWTEventListener { event ->
-                        if (event is MouseEvent && event.id == MouseEvent.MOUSE_CLICKED) {
-                            val sourceComponent = event.component
-                            if (sourceComponent != null && !SwingUtilities.isDescendingFrom(sourceComponent, popupMenu)) {
-                                popupMenu.isVisible = false
-                                popupWindow.isVisible = false
-                                
-                                // 移除监听器
-                                awtEventListener?.let {
-                                    Toolkit.getDefaultToolkit().removeAWTEventListener(it)
-                                }
-                                awtEventListener = null
-                            }
-                        }
-                    }
-                    
-                    // 添加全局鼠标监听器
-                    Toolkit.getDefaultToolkit().addAWTEventListener(awtEventListener, AWTEvent.MOUSE_EVENT_MASK)
-                }
+        trayIcon.popupMenu = popup
+        
+        // 添加点击监听器
+        trayIcon.addActionListener { 
+            frame.isVisible = !frame.isVisible
+            isWindowVisible = frame.isVisible
+            if (frame.isVisible) {
+                updateLyrics()
             }
-        })
+        }
         
         try {
             tray.add(trayIcon)
         } catch (e: AWTException) {
             println("无法添加系统托盘图标: ${e.message}")
-        }
-    }
-    
-    // 创建支持中文的字体
-    private fun createChineseFont(): Font {
-        return try {
-            // 尝试使用常见的中文字体
-            val fontNames = arrayOf(
-                "Microsoft YaHei", "微软雅黑", "SimHei", "黑体", 
-                "SimSun", "宋体", "KaiTi", "楷体", "FangSong", "仿宋"
-            )
-            
-            for (fontName in fontNames) {
-                try {
-                    return Font(fontName, Font.PLAIN, 12)
-                } catch (e: Exception) {
-                    // 继续尝试下一个字体
-                    continue
-                }
-            }
-            
-            // 如果所有中文字体都不可用，使用默认字体
-            Font(Font.DIALOG, Font.PLAIN, 12)
-        } catch (e: Exception) {
-            Font(Font.DIALOG, Font.PLAIN, 12)
         }
     }
     
@@ -705,7 +654,7 @@ object DesktopLyrics {
             e.printStackTrace()
         }
         
-        val tabbedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
+        val tabedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
             border = EmptyBorder(10, 10, 10, 10)
             background = Color(240, 240, 240)
             font = Font("微软雅黑", Font.PLAIN, 12)
@@ -720,11 +669,11 @@ object DesktopLyrics {
         // 其他设置面板
         val otherPanel = createOtherPanel(dialog)
         
-        tabbedPane.addTab("字体", fontPanel)
-        tabbedPane.addTab("颜色", colorPanel)
-        tabbedPane.addTab("其他", otherPanel)
+        tabedPane.addTab("字体", fontPanel)
+        tabedPane.addTab("颜色", colorPanel)
+        tabedPane.addTab("其他", otherPanel)
         
-        dialog.add(tabbedPane, BorderLayout.CENTER)
+        dialog.add(tabedPane, BorderLayout.CENTER)
         
         // 添加关闭按钮
         val closeButton = JButton("关闭").apply {
@@ -1544,12 +1493,3 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
-
-
-
-
-
-
-
-
-
