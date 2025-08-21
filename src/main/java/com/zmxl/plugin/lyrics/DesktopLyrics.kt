@@ -201,8 +201,8 @@ object DesktopLyrics {
                 add(topPanel, BorderLayout.NORTH)
             }
             
-            // 设置窗口大小和位置
-            setSize(800, 180)
+
+            setSize(740, 180)
             setLocationRelativeTo(null)
             
             // 添加键盘快捷键
@@ -1469,7 +1469,7 @@ class LyricsPanel : JPanel() {
                     g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
                     val currentLine = parsedLyrics[currentLineIndex].text
                     val currentX = getTextXPosition(g2d, currentLine)
-                    val currentY = yPos - (20 * (1 - smoothAlpha)).toInt()
+                    val currentY = yPos - (20 * (1 - smoothAlpha).toInt())
                     
                     // 使用阴影效果
                     if (useShadow) {
