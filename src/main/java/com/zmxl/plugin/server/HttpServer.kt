@@ -17,6 +17,8 @@ import java.io.PrintWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.Executors
+import org.json.JSONArray
 import org.json.JSONObject
 
 class HttpServer(private val port: Int) {
@@ -314,171 +316,172 @@ class HttpServer(private val port: Int) {
         }
     }
 
-/**
- * 歌词API
- */
-class LyricServlet : HttpServlet() {
-    // 添加歌词缓存机制
-    private val lyricCache = mutableMapOf<String, CachedLyric>()
-    private val gson = Gson()
-    
-    // 添加后台线程池处理网络请求
-    private val executor = Executors.newFixedThreadPool(2)
-    
-    @Throws(IOException::class)
-    override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-        resp.contentType = "application/json;charset=UTF-8"
+    /**
+     * 歌词API
+     */
+    class LyricServlet : HttpServlet() {
+        // 添加歌词缓存机制
+        private val lyricCache = mutableMapOf<String, CachedLyric>()
+        private val gson = Gson()
         
-        val media = PlaybackStateHolder.currentMedia
-        if (media == null) {
-            // 如果没有当前媒体信息，直接返回SPW歌词
-            returnSpwLyrics(resp)
-            return
-        }
+        // 添加后台线程池处理网络请求
+        private val executor = Executors.newFixedThreadPool(2)
         
-        val cacheKey = "${media.title}|${media.artist}|${media.album}"
-        val cachedLyric = lyricCache[cacheKey]
-        
-        // 检查缓存是否存在且未过期（5分钟）
-        if (cachedLyric != null && System.currentTimeMillis() - cachedLyric.timestamp < 300000) {
-            // 返回缓存的歌词
-            val response = mapOf(
-                "status" to "success",
-                "lyric" to cachedLyric.content,
-                "source" to cachedLyric.source,
-                "cached" to true
-            )
-            resp.writer.write(gson.toJson(response))
-            return
-        }
-        
-        // 异步获取网络歌词
-        executor.submit {
-            try {
-                val networkLyric = getLyricFromNetwork(media.title, media.artist)
-                if (networkLyric != null && networkLyric.isNotBlank()) {
-                    // 缓存网络歌词
-                    lyricCache[cacheKey] = CachedLyric(networkLyric, "network", System.currentTimeMillis())
-                }
-            } catch (e: Exception) {
-                println("异步获取网络歌词失败: ${e.message}")
-            }
-        }
-        
-        // 立即返回SPW歌词，不等待网络请求
-        returnSpwLyrics(resp)
-    }
-    
-    private fun returnSpwLyrics(resp: HttpServletResponse) {
-        try {
-            val currentPosition = PlaybackStateHolder.currentPosition
-            val (currentLine, nextLine) = PlaybackStateHolder.getCurrentAndNextLyrics(currentPosition)
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
             
-            if (currentLine != null || nextLine != null) {
-                // 构建简化的LRC格式歌词，只包含当前行和下一行
-                val simplifiedLyrics = buildString {
-                    if (currentLine != null) {
-                        append(formatTimeTag(currentLine.time))
-                        append(currentLine.text)
-                        append("\n")
-                    }
-                    
-                    if (nextLine != null) {
-                        append(formatTimeTag(nextLine.time))
-                        append(nextLine.text)
-                    }
-                }
-                
+            val media = PlaybackStateHolder.currentMedia
+            if (media == null) {
+                // 如果没有当前媒体信息，直接返回SPW歌词
+                returnSpwLyrics(resp)
+                return
+            }
+            
+            val cacheKey = "${media.title}|${media.artist}|${media.album}"
+            val cachedLyric = lyricCache[cacheKey]
+            
+            // 检查缓存是否存在且未过期（5分钟）
+            if (cachedLyric != null && System.currentTimeMillis() - cachedLyric.timestamp < 300000) {
+                // 返回缓存的歌词
                 val response = mapOf(
                     "status" to "success",
-                    "lyric" to simplifiedLyrics,
-                    "source" to "spw",
-                    "simplified" to true
+                    "lyric" to cachedLyric.content,
+                    "source" to cachedLyric.source,
+                    "cached" to true
                 )
                 resp.writer.write(gson.toJson(response))
-            } else {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "未找到歌词"
-                )))
-            }
-        } catch (e: Exception) {
-            resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-            resp.writer.write(gson.toJson(mapOf(
-                "status" to "error",
-                "message" to "获取歌词失败: ${e.message}"
-            )))
-        }
-    }
-    
-    // 从网络API获取歌词 - 使用正确的网易云音乐API
-    private fun getLyricFromNetwork(title: String?, artist: String?): String? {
-        if (title.isNullOrBlank()) return null
-        
-        try {
-            // 构建搜索URL - 使用正确的网易云音乐API
-            val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
-            val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
-            val searchUrl = "https://music.163.com/api/search/get?type=1&offset=0&limit=1&s=$encodedQuery"
-            
-            // 执行搜索请求
-            val searchResult = getUrlContent(searchUrl)
-            val searchJson = JSONObject(searchResult)
-            
-            // 检查是否有结果
-            if (!searchJson.has("result") || searchJson.isNull("result")) {
-                return null
+                return
             }
             
-            val result = searchJson.getJSONObject("result")
-            if (!result.has("songs") || result.isNull("songs")) {
-                return null
-            }
-            
-            val songs = result.getJSONArray("songs")
-            
-            if (songs.length() > 0) {
-                // 获取第一首歌曲的ID
-                val songId = songs.getJSONObject(0).getInt("id")
-                
-                // 使用api.injahow.cn获取歌词
-                val lyricUrl = "https://api.injahow.cn/meting/?type=lyric&id=$songId"
-                val lyricResult = getUrlContent(lyricUrl)
-                val lyricObj = JSONObject(lyricResult)
-                
-                if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
-                    return lyricObj.getString("lyric")
+            // 异步获取网络歌词
+            executor.submit {
+                try {
+                    val networkLyric = getLyricFromNetwork(media.title, media.artist)
+                    if (networkLyric != null && networkLyric.isNotBlank()) {
+                        // 缓存网络歌词
+                        lyricCache[cacheKey] = CachedLyric(networkLyric, "network", System.currentTimeMillis())
+                    }
+                } catch (e: Exception) {
+                    println("异步获取网络歌词失败: ${e.message}")
                 }
             }
-        } catch (e: Exception) {
-            println("从网络获取歌词失败: ${e.message}")
+            
+            // 立即返回SPW歌词，不等待网络请求
+            returnSpwLyrics(resp)
         }
         
-        return null
+        private fun returnSpwLyrics(resp: HttpServletResponse) {
+            try {
+                val currentPosition = PlaybackStateHolder.currentPosition
+                val (currentLine, nextLine) = PlaybackStateHolder.getCurrentAndNextLyrics(currentPosition)
+                
+                if (currentLine != null || nextLine != null) {
+                    // 构建简化的LRC格式歌词，只包含当前行和下一行
+                    val simplifiedLyrics = buildString {
+                        if (currentLine != null) {
+                            append(formatTimeTag(currentLine.time))
+                            append(currentLine.text)
+                            append("\n")
+                        }
+                        
+                        if (nextLine != null) {
+                            append(formatTimeTag(nextLine.time))
+                            append(nextLine.text)
+                        }
+                    }
+                    
+                    val response = mapOf(
+                        "status" to "success",
+                        "lyric" to simplifiedLyrics,
+                        "source" to "spw",
+                        "simplified" to true
+                    )
+                    resp.writer.write(gson.toJson(response))
+                } else {
+                    resp.status = HttpServletResponse.SC_NOT_FOUND
+                    resp.writer.write(gson.toJson(mapOf(
+                        "status" to "error",
+                        "message" to "未找到歌词"
+                    )))
+                }
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "获取歌词失败: ${e.message}"
+                )))
+            }
+        }
+        
+        // 从网络API获取歌词 - 使用正确的网易云音乐API
+        private fun getLyricFromNetwork(title: String?, artist: String?): String? {
+            if (title.isNullOrBlank()) return null
+            
+            try {
+                // 构建搜索URL - 使用正确的网易云音乐API
+                val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
+                val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
+                val searchUrl = "https://music.163.com/api/search/get?type=1&offset=0&limit=1&s=$encodedQuery"
+                
+                // 执行搜索请求
+                val searchResult = getUrlContent(searchUrl)
+                val searchJson = JSONObject(searchResult)
+                
+                // 检查是否有结果
+                if (!searchJson.has("result") || searchJson.isNull("result")) {
+                    return null
+                }
+                
+                val result = searchJson.getJSONObject("result")
+                if (!result.has("songs") || result.isNull("songs")) {
+                    return null
+                }
+                
+                val songs = result.getJSONArray("songs")
+                
+                if (songs.length() > 0) {
+                    // 获取第一首歌曲的ID
+                    val songId = songs.getJSONObject(0).getInt("id")
+                    
+                    // 使用api.injahow.cn获取歌词
+                    val lyricUrl = "https://api.injahow.cn/meting/?type=lyric&id=$songId"
+                    val lyricResult = getUrlContent(lyricUrl)
+                    val lyricObj = JSONObject(lyricResult)
+                    
+                    if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
+                        return lyricObj.getString("lyric")
+                    }
+                }
+            } catch (e: Exception) {
+                println("从网络获取歌词失败: ${e.message}")
+            }
+            
+            return null
+        }
+        
+        // 格式化时间标签
+        private fun formatTimeTag(timeMs: Long): String {
+            val minutes = timeMs / 60000
+            val seconds = (timeMs % 60000) / 1000
+            val millis = timeMs % 1000
+            return String.format("[%02d:%02d.%03d]", minutes, seconds, millis)
+        }
+        
+        // 辅助方法：获取URL内容
+        private fun getUrlContent(urlString: String): String {
+            val url = URL(urlString)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 3000 // 3秒超时
+            conn.readTimeout = 3000    // 3秒超时
+            return conn.inputStream.bufferedReader().use { it.readText() }
+        }
+        
+        // 缓存歌词数据结构
+        data class CachedLyric(val content: String, val source: String, val timestamp: Long)
     }
-    
-    // 格式化时间标签
-    private fun formatTimeTag(timeMs: Long): String {
-        val minutes = timeMs / 60000
-        val seconds = (timeMs % 60000) / 1000
-        val millis = timeMs % 1000
-        return String.format("[%02d:%02d.%03d]", minutes, seconds, millis)
-    }
-    
-    // 辅助方法：获取URL内容
-    private fun getUrlContent(urlString: String): String {
-        val url = URL(urlString)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "GET"
-        conn.connectTimeout = 3000 // 3秒超时
-        conn.readTimeout = 3000    // 3秒超时
-        return conn.inputStream.bufferedReader().use { it.readText() }
-    }
-    
-    // 缓存歌词数据结构
-    data class CachedLyric(val content: String, val source: String, val timestamp: Long)
-}
+
     /**
      * 封面图片API
      */
@@ -569,7 +572,3 @@ class LyricServlet : HttpServlet() {
         }
     }
 }
-
-
-
-
