@@ -609,16 +609,6 @@ object DesktopLyrics {
             isAlwaysOnTop = true
         }
         
-        // 添加全局鼠标监听器来隐藏菜单
-        val mouseAdapter = object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                if (popupMenu.isVisible && !SwingUtilities.isDescendingFrom(e.component, popupMenu)) {
-                    popupMenu.isVisible = false
-                    popupWindow.isVisible = false
-                }
-            }
-        }
-        
         // 为系统托盘图标添加鼠标监听器
         trayIcon.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
@@ -641,17 +631,34 @@ object DesktopLyrics {
                     popupMenu.show(popupWindow.contentPane, 0, 0)
                     
                     // 添加全局鼠标监听器
-                    Toolkit.getDefaultToolkit().addAWTEventListener({ event ->
+                    val awtEventListener = AWTEventListener { event ->
                         if (event is MouseEvent && event.id == MouseEvent.MOUSE_CLICKED) {
-                            if (!SwingUtilities.isDescendingFrom(event.component, popupMenu)) {
+                            // 修复：检查组件是否为null
+                            val sourceComponent = event.component
+                            if (sourceComponent != null && !SwingUtilities.isDescendingFrom(sourceComponent, popupMenu)) {
                                 popupMenu.isVisible = false
                                 popupWindow.isVisible = false
+                                
+                                // 移除监听器
+                                Toolkit.getDefaultToolkit().removeAWTEventListener(awtEventListener)
                             }
                         }
-                    }, AWTEvent.MOUSE_EVENT_MASK)
+                    }
+                    
+                    Toolkit.getDefaultToolkit().addAWTEventListener(awtEventListener, AWTEvent.MOUSE_EVENT_MASK)
                 }
             }
         })
+        
+        // 添加窗口焦点监听器，当窗口失去焦点时隐藏菜单
+        popupMenu.addHierarchyListener { e ->
+            if (e.changeFlags and HierarchyEvent.DISPLAYABILITY_CHANGED.toLong() != 0L) {
+                if (!popupMenu.isDisplayable) {
+                    popupMenu.isVisible = false
+                    popupWindow.isVisible = false
+                }
+            }
+        }
         
         try {
             tray.add(trayIcon)
@@ -660,7 +667,7 @@ object DesktopLyrics {
         }
     }
     
-    // 创建支持中文的字体
+ 
     private fun createChineseFont(): Font {
         return try {
             // 尝试使用常见的中文字体
@@ -1537,6 +1544,7 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
 
 
 
