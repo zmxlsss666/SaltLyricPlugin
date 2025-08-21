@@ -320,26 +320,61 @@ class HttpServer(private val port: Int) {
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
             
+            // 首选尝试从网络获取歌词
             val lyricUrl = PlaybackStateHolder.lyricUrl
-            if (lyricUrl == null) {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(Gson().toJson(mapOf(
-                    "status" to "error",
-                    "message" to "歌词地址未找到"
-                )))
-                return
+            if (lyricUrl != null) {
+                try {
+                    // 获取歌词内容
+                    val lyricContent = getUrlContent(lyricUrl)
+                    
+                    // 返回歌词
+                    val response = mapOf(
+                        "status" to "success",
+                        "lyric" to lyricContent,
+                        "source" to "network"
+                    )
+                    resp.writer.write(Gson().toJson(response))
+                    return
+                } catch (e: Exception) {
+                    println("网络歌词获取失败，尝试从SPW获取: ${e.message}")
+                    // 网络获取失败，继续尝试从SPW获取
+                }
             }
             
+            // 备选方案：从SPW获取当前行和下一行歌词
             try {
-                // 获取歌词内容
-                val lyricContent = getUrlContent(lyricUrl)
+                val currentPosition = PlaybackStateHolder.currentPosition
+                val (currentLine, nextLine) = PlaybackStateHolder.getCurrentAndNextLyrics(currentPosition)
                 
-                // 返回歌词
-                val response = mapOf(
-                    "status" to "success",
-                    "lyric" to lyricContent
-                )
-                resp.writer.write(Gson().toJson(response))
+                if (currentLine != null || nextLine != null) {
+                    // 构建简化的LRC格式歌词，只包含当前行和下一行
+                    val simplifiedLyrics = buildString {
+                        if (currentLine != null) {
+                            append(formatTimeTag(currentLine.time))
+                            append(currentLine.text)
+                            append("\n")
+                        }
+                        
+                        if (nextLine != null) {
+                            append(formatTimeTag(nextLine.time))
+                            append(nextLine.text)
+                        }
+                    }
+                    
+                    val response = mapOf(
+                        "status" to "success",
+                        "lyric" to simplifiedLyrics,
+                        "source" to "spw",
+                        "simplified" to true
+                    )
+                    resp.writer.write(Gson().toJson(response))
+                } else {
+                    resp.status = HttpServletResponse.SC_NOT_FOUND
+                    resp.writer.write(Gson().toJson(mapOf(
+                        "status" to "error",
+                        "message" to "未找到歌词"
+                    )))
+                }
             } catch (e: Exception) {
                 resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
                 resp.writer.write(Gson().toJson(mapOf(
@@ -347,6 +382,14 @@ class HttpServer(private val port: Int) {
                     "message" to "获取歌词失败: ${e.message}"
                 )))
             }
+        }
+        
+        // 格式化时间标签
+        private fun formatTimeTag(timeMs: Long): String {
+            val minutes = timeMs / 60000
+            val seconds = (timeMs % 60000) / 1000
+            val millis = timeMs % 1000
+            return String.format("[%02d:%02d.%03d]", minutes, seconds, millis)
         }
         
         // 辅助方法：获取URL内容
