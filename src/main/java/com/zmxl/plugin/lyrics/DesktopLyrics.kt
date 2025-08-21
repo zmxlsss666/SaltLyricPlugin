@@ -543,13 +543,13 @@ object DesktopLyrics {
     private fun setupSystemTray() {
         val tray = SystemTray.getSystemTray()
         val image = createTrayIconImage()
-        val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
+        val trayIcon = TrayIcon(image, "Salt Player \u684c\u9762\u6b4c\u8bcd") // Salt Player 桌面歌词
         
-        // 使用中文菜单项
+        // 使用Unicode转义序列避免乱码
         val popup = PopupMenu()
         
         // 添加显示/隐藏菜单
-        val toggleItem = MenuItem("显示/隐藏")
+        val toggleItem = MenuItem("\u663e\u793a/\u9690\u85cf") // 显示/隐藏
         toggleItem.addActionListener { 
             frame.isVisible = !frame.isVisible
             isWindowVisible = frame.isVisible
@@ -559,15 +559,15 @@ object DesktopLyrics {
         }
         
         // 添加锁定/解锁菜单
-        val lockItem = MenuItem(if (isLocked) "解锁" else "锁定")
+        val lockItem = MenuItem(if (isLocked) "\u89e3\u9501" else "\u9501\u5b9a") // 解锁/锁定
         lockItem.addActionListener { toggleLock() }
         
         // 添加设置菜单
-        val settingsItem = MenuItem("设置")
+        val settingsItem = MenuItem("\u8bbe\u7f6e") // 设置
         settingsItem.addActionListener { showSettingsDialog() }
         
         // 添加退出菜单
-        val exitItem = MenuItem("退出")
+        val exitItem = MenuItem("\u9000\u51fa") // 退出
         exitItem.addActionListener { exitApplication() }
         
         popup.add(toggleItem)
@@ -576,9 +576,8 @@ object DesktopLyrics {
         popup.addSeparator()
         popup.add(exitItem)
         
-        // 修复: 使用更兼容的字体设置方式
+        // 设置菜单项字体（使用Unicode兼容字体）
         try {
-            // 尝试使用系统默认字体，避免乱码
             val font = Font(Font.DIALOG, Font.PLAIN, 12)
             for (i in 0 until popup.itemCount) {
                 val item = popup.getItem(i)
@@ -586,7 +585,6 @@ object DesktopLyrics {
             }
         } catch (e: Exception) {
             println("设置菜单字体失败: ${e.message}")
-            // 如果设置字体失败，不设置字体，使用系统默认
         }
         
         trayIcon.popupMenu = popup
@@ -1457,5 +1455,6 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
 
 
