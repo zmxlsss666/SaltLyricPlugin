@@ -550,68 +550,138 @@ object DesktopLyrics {
         val image = createTrayIconImage()
         val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
         
-        // 使用AWT的PopupMenu
-        val popup = PopupMenu()
+        // 创建自定义的Swing弹出菜单
+        val popupMenu = JPopupMenu().apply {
+            background = Color(240, 240, 240)
+            border = BorderFactory.createLineBorder(Color(200, 200, 200))
+            isLightWeightPopupEnabled = true // 启用轻量级弹出菜单
+        }
         
-        // 添加显示/隐藏菜单
-        val toggleItem = MenuItem("显示/隐藏")
-        toggleItem.addActionListener { 
-            frame.isVisible = !frame.isVisible
-            isWindowVisible = frame.isVisible
-            if (frame.isVisible) {
-                updateLyrics()
+        // 添加显示/隐藏菜单项
+        val toggleItem = JMenuItem("显示/隐藏").apply {
+            font = createChineseFont()
+            addActionListener {
+                frame.isVisible = !frame.isVisible
+                isWindowVisible = frame.isVisible
+                if (frame.isVisible) {
+                    updateLyrics()
+                }
+                popupMenu.isVisible = false
+            }
+        }
+        popupMenu.add(toggleItem)
+        
+        // 添加锁定/解锁菜单项
+        val lockItem = JMenuItem(if (isLocked) "解锁" else "锁定").apply {
+            font = createChineseFont()
+            addActionListener {
+                toggleLock()
+                popupMenu.isVisible = false
+            }
+        }
+        popupMenu.add(lockItem)
+        
+        // 添加设置菜单项
+        val settingsItem = JMenuItem("设置").apply {
+            font = createChineseFont()
+            addActionListener {
+                showSettingsDialog()
+                popupMenu.isVisible = false
+            }
+        }
+        popupMenu.add(settingsItem)
+        
+        popupMenu.add(JSeparator())
+        
+        // 添加退出菜单项
+        val exitItem = JMenuItem("退出").apply {
+            font = createChineseFont()
+            addActionListener {
+                exitApplication()
+                popupMenu.isVisible = false
+            }
+        }
+        popupMenu.add(exitItem)
+        
+        // 创建透明的JWindow作为弹出菜单的父容器
+        val popupWindow = JWindow().apply {
+            background = Color(0, 0, 0, 0) // 完全透明
+            isAlwaysOnTop = true
+        }
+        
+        // 添加全局鼠标监听器来隐藏菜单
+        val mouseAdapter = object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (popupMenu.isVisible && !SwingUtilities.isDescendingFrom(e.component, popupMenu)) {
+                    popupMenu.isVisible = false
+                    popupWindow.isVisible = false
+                }
             }
         }
         
-        // 添加锁定/解锁菜单
-        val lockItem = MenuItem(if (isLocked) "解锁" else "锁定")
-        lockItem.addActionListener { toggleLock() }
-        
-        // 添加设置菜单
-        val settingsItem = MenuItem("设置")
-        settingsItem.addActionListener { showSettingsDialog() }
-        
-        // 添加退出菜单
-        val exitItem = MenuItem("退出")
-        exitItem.addActionListener { exitApplication() }
-        
-        popup.add(toggleItem)
-        popup.add(lockItem)
-        popup.add(settingsItem)
-        popup.addSeparator()
-        popup.add(exitItem)
-        
-        // 设置菜单字体，避免乱码
-        try {
-            // 尝试使用支持中文的字体
-            val availableFonts = GraphicsEnvironment.getLocalGraphicsEnvironment().availableFontFamilyNames
-            val chineseFont = availableFonts.find { 
-                it.contains("YaHei") || it.contains("微软") || it.contains("Microsoft") || it.contains("SimHei") 
-            } ?: "Dialog"
-            
-            val font = Font(chineseFont, Font.PLAIN, 12)
-            for (i in 0 until popup.itemCount) {
-                popup.getItem(i).font = font
+        // 为系统托盘图标添加鼠标监听器
+        trayIcon.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.button == MouseEvent.BUTTON1) {
+                    // 左键点击 - 切换窗口显示/隐藏
+                    frame.isVisible = !frame.isVisible
+                    isWindowVisible = frame.isVisible
+                    if (frame.isVisible) {
+                        updateLyrics()
+                    }
+                } else if (e.button == MouseEvent.BUTTON3) {
+                    // 右键点击 - 显示自定义菜单
+                    val mousePos = MouseInfo.getPointerInfo().location
+                    
+                    // 设置弹出窗口位置
+                    popupWindow.setLocation(mousePos.x, mousePos.y)
+                    popupWindow.isVisible = true
+                    
+                    // 显示菜单
+                    popupMenu.show(popupWindow.contentPane, 0, 0)
+                    
+                    // 添加全局鼠标监听器
+                    Toolkit.getDefaultToolkit().addAWTEventListener({ event ->
+                        if (event is MouseEvent && event.id == MouseEvent.MOUSE_CLICKED) {
+                            if (!SwingUtilities.isDescendingFrom(event.component, popupMenu)) {
+                                popupMenu.isVisible = false
+                                popupWindow.isVisible = false
+                            }
+                        }
+                    }, AWTEvent.MOUSE_EVENT_MASK)
+                }
             }
-        } catch (e: Exception) {
-            println("设置菜单字体失败: ${e.message}")
-        }
-        
-        trayIcon.popupMenu = popup
-        
-        // 添加点击监听器
-        trayIcon.addActionListener { 
-            frame.isVisible = !frame.isVisible
-            isWindowVisible = frame.isVisible
-            if (frame.isVisible) {
-                updateLyrics()
-            }
-        }
+        })
         
         try {
             tray.add(trayIcon)
         } catch (e: AWTException) {
             println("无法添加系统托盘图标: ${e.message}")
+        }
+    }
+    
+    // 创建支持中文的字体
+    private fun createChineseFont(): Font {
+        return try {
+            // 尝试使用常见的中文字体
+            val fontNames = arrayOf(
+                "Microsoft YaHei", "微软雅黑", "SimHei", "黑体", 
+                "SimSun", "宋体", "KaiTi", "楷体", "FangSong", "仿宋"
+            )
+            
+            for (fontName in fontNames) {
+                try {
+                    return Font(fontName, Font.PLAIN, 12)
+                } catch (e: Exception) {
+                    // 继续尝试下一个字体
+                    continue
+                }
+            }
+            
+            // 如果所有中文字体都不可用，使用默认字体
+            Font(Font.DIALOG, Font.PLAIN, 12)
+        } catch (e: Exception) {
+            Font(Font.DIALOG, Font.PLAIN, 12)
         }
     }
     
@@ -1467,6 +1537,7 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
 
 
 
