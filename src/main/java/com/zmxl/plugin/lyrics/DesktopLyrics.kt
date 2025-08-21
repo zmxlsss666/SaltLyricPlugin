@@ -576,11 +576,17 @@ object DesktopLyrics {
         popup.addSeparator()
         popup.add(exitItem)
         
-        // 设置菜单项字体（避免乱码）
-        val font = Font("微软雅黑", Font.PLAIN, 12)
-        for (i in 0 until popup.itemCount) {
-            val item = popup.getItem(i)
-            item.font = font
+        // 修复: 使用更兼容的字体设置方式
+        try {
+            // 尝试使用系统默认字体，避免乱码
+            val font = Font(Font.DIALOG, Font.PLAIN, 12)
+            for (i in 0 until popup.itemCount) {
+                val item = popup.getItem(i)
+                item.font = font
+            }
+        } catch (e: Exception) {
+            println("设置菜单字体失败: ${e.message}")
+            // 如果设置字体失败，不设置字体，使用系统默认
         }
         
         trayIcon.popupMenu = popup
@@ -1451,4 +1457,5 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
 
