@@ -1,6 +1,7 @@
 package com.zmxl.plugin.lyrics
 
 import com.google.gson.Gson
+import com.sun.jna.platform.win32.User32
 import com.sun.jna.Native
 import com.sun.jna.Structure
 import com.sun.jna.platform.win32.WinDef
@@ -1450,3 +1451,4 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
