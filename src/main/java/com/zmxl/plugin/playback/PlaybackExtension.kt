@@ -72,7 +72,8 @@ override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): St
     // 重置播放位置
     PlaybackStateHolder.resetPosition()
     
-    // 启动后台线程获取歌词和封面信息（首选网络）
+    // 不再尝试获取歌词，由LyricServlet专门处理
+    // 只获取封面图片
     thread {
         try {
             // 构建搜索URL
@@ -83,25 +84,30 @@ override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): St
             // 执行搜索请求
             val searchResult = getUrlContent(searchUrl)
             val searchJson = JSONObject(searchResult)
-            val songs = searchJson.getJSONObject("result").getJSONArray("songs")
             
-            if (songs.length() > 0) {
-                val songId = songs.getJSONObject(0).getInt("id")
-                
-                // 获取歌曲详细信息
-                val songInfoUrl = "https://api.injahow.cn/meting/?type=song&id=$songId"
-                val songInfoResult = getUrlContent(songInfoUrl)
-                val songInfoArray = JSONArray(songInfoResult)
-                
-                if (songInfoArray.length() > 0) {
-                    val songInfo = songInfoArray.getJSONObject(0)
-                    PlaybackStateHolder.coverUrl = songInfo.getString("pic")
-                    println("获取封面成功: coverUrl=${PlaybackStateHolder.coverUrl}")
+            if (searchJson.has("result") && !searchJson.isNull("result")) {
+                val result = searchJson.getJSONObject("result")
+                if (result.has("songs") && !result.isNull("songs")) {
+                    val songs = result.getJSONArray("songs")
+                    
+                    if (songs.length() > 0) {
+                        val songId = songs.getJSONObject(0).getInt("id")
+                        
+                        // 获取歌曲详细信息
+                        val songInfoUrl = "https://api.injahow.cn/meting/?type=song&id=$songId"
+                        val songInfoResult = getUrlContent(songInfoUrl)
+                        val songInfoArray = JSONArray(songInfoResult)
+                        
+                        if (songInfoArray.length() > 0) {
+                            val songInfo = songInfoArray.getJSONObject(0)
+                            PlaybackStateHolder.coverUrl = songInfo.getString("pic")
+                            println("获取封面成功: coverUrl=${PlaybackStateHolder.coverUrl}")
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
-            println("获取歌词/封面失败: ${e.message}")
-            // 网络获取失败，将依赖SPW提供的歌词行
+            println("获取封面失败: ${e.message}")
         }
     }
     
@@ -222,4 +228,5 @@ override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): St
         }
     }
 }
+
 
