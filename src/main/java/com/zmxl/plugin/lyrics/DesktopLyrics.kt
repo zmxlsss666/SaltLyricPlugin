@@ -3,7 +3,6 @@ package com.zmxl.plugin.lyrics
 import com.google.gson.Gson
 import com.sun.jna.Native
 import com.sun.jna.Structure
-import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
 import java.awt.*
 import java.awt.event.*
@@ -30,7 +29,7 @@ object DesktopLyrics {
     
     private var currentSongId = ""
     private var lastLyricUrl = ""
-    private var lyricCache = mutableMap<String, String>()
+    private var lyricCache = mutableMapOf<String, String>()
     
     // 字体设置
     private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
@@ -341,7 +340,7 @@ object DesktopLyrics {
             val hwnd = WinDef.HWND(com.sun.jna.Pointer.createConstant(handle))
             
             // 获取当前窗口样式
-            val currentStyle = User32Ex.INSTANCE.GetWindowLong(hwnd, User32.GWL_EXSTYLE)
+            val currentStyle = User32.INSTANCE.GetWindowLong(hwnd, User32.GWL_EXSTYLE)
             
             // 设置或移除WS_EX_TRANSPARENT和WS_EX_LAYERED样式
             val newStyle = if (clickThrough) {
@@ -350,7 +349,7 @@ object DesktopLyrics {
                 currentStyle and (User32.WS_EX_TRANSPARENT.inv()) and (User32.WS_EX_LAYERED.inv())
             }
             
-            User32Ex.INSTANCE.SetWindowLong(hwnd, User32.GWL_EXSTYLE, newStyle)
+            User32.INSTANCE.SetWindowLong(hwnd, User32.GWL_EXSTYLE, newStyle)
         } catch (e: Exception) {
             println("设置窗口点击穿透失败: ${e.message}")
         }
@@ -738,7 +737,7 @@ object DesktopLyrics {
             gbc.gridx = 0
             gbc.gridy++
             add(JLabel("字体大小:").apply { 
-                font = Font("微软雅黑", Font.PLAIN, 极速
+                font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
             }, gbc)
             
@@ -757,14 +756,13 @@ object DesktopLyrics {
             }, gbc)
             
             gbc.gridx = 1
-           极速
             val styleCombo = JComboBox(arrayOf("普通", "粗体", "斜体")).apply {
                 selectedIndex = when (chineseFont.style) {
                     Font.BOLD -> 1
                     Font.ITALIC -> 2
                     else -> 0
                 }
-                font = Font("极速", Font.PLAIN, 12)
+                font = Font("微软雅黑", Font.PLAIN, 12)
                 background = Color.WHITE
                 renderer = DefaultListCellRenderer().apply {
                     font = Font("微软雅黑", Font.PLAIN, 12)
@@ -776,7 +774,7 @@ object DesktopLyrics {
             gbc.gridx = 0
             gbc.gridy++
             gbc.gridwidth = 2
-            gbc.anchor =极速
+            gbc.anchor = GridBagConstraints.CENTER
             val applyButton = JButton("应用字体设置").apply {
                 font = Font("微软雅黑", Font.BOLD, 12)
                 background = Color(70, 130, 180)
@@ -786,7 +784,7 @@ object DesktopLyrics {
                     val chineseFontName = chineseFontCombo.selectedItem as String
                     val japaneseFontName = japaneseFontCombo.selectedItem as String
                     val englishFontName = englishFontCombo.selectedItem as String
-                    val fontSize = size极速.value as Int
+                    val fontSize = sizeSpinner.value as Int
                     val fontStyle = when (styleCombo.selectedIndex) {
                         1 -> Font.BOLD
                         2 -> Font.ITALIC
@@ -794,7 +792,7 @@ object DesktopLyrics {
                     }
                     
                     chineseFont = Font(chineseFontName, fontStyle, fontSize)
-                    japanese极速 = Font(japaneseFontName, font极速, fontSize)
+                    japaneseFont = Font(japaneseFontName, fontStyle, fontSize)
                     englishFont = Font(englishFontName, fontStyle, fontSize)
                     
                     lyricsPanel.setFonts(chineseFont, japaneseFont, englishFont)
@@ -810,7 +808,7 @@ object DesktopLyrics {
             background = Color.WHITE
             
             val gbc = GridBagConstraints().apply {
-                insets = Insets(8极速, 8, 8, 8)
+                insets = Insets(8, 8, 8, 8)
                 anchor = GridBagConstraints.WEST
                 fill = GridBagConstraints.HORIZONTAL
             }
@@ -828,11 +826,11 @@ object DesktopLyrics {
             gbc.gridy++
             
             // 歌词颜色
-            gbc.grid极速 = 0
+            gbc.gridx = 0
             add(JLabel("歌词颜色:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
-极速            }, gbc)
+            }, gbc)
             
             gbc.gridx = 1
             val lyricColorButton = JButton().apply {
@@ -857,7 +855,7 @@ object DesktopLyrics {
             }, gbc)
             
             gbc.gridx = 1
-            val highlightColorButton = J极速().apply {
+            val highlightColorButton = JButton().apply {
                 background = lyricsPanel.highlightColor
                 preferredSize = Dimension(80, 25)
                 addActionListener { 
@@ -873,9 +871,9 @@ object DesktopLyrics {
             // 背景颜色
             gbc.gridx = 0
             gbc.gridy++
-            add(JLabel("背景极速:").apply { 
+            add(JLabel("背景颜色:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
-                foreground = Color(极速, 60, 60)
+                foreground = Color(60, 60, 60)
             }, gbc)
             
             gbc.gridx = 1
@@ -884,7 +882,7 @@ object DesktopLyrics {
                 preferredSize = Dimension(80, 25)
                 addActionListener { 
                     val color = JColorChooser.showDialog(dialog, "选择背景颜色", background)
-                    if (color极速 null) {
+                    if (color != null) {
                         background = color
                         lyricsPanel.backgroundColor = color
                         lyricsPanel.background = Color(
@@ -916,7 +914,7 @@ object DesktopLyrics {
             add(JLabel("其他设置").apply { 
                 font = Font("微软雅黑", Font.BOLD, 16)
                 foreground = Color(60, 60, 60)
-            },极速)
+            }, gbc)
             
             gbc.gridwidth = 1
             gbc.gridy++
@@ -933,7 +931,7 @@ object DesktopLyrics {
                 addChangeListener {
                     lyricsPanel.transparency = value / 100f
                     val bg = lyricsPanel.backgroundColor
-                    lyricsPanel.background = Color(bg.red, bg.green, bg.blue, (255 * lyricsPanel.transparency).round极速())
+                    lyricsPanel.background = Color(bg.red, bg.green, bg.blue, (255 * lyricsPanel.transparency).roundToInt())
                     lyricsPanel.repaint()
                 }
             }
@@ -963,7 +961,7 @@ object DesktopLyrics {
                 foreground = Color(60, 60, 60)
             }, gbc)
             
-            gbc.grid极速 = 1
+            gbc.gridx = 1
             val alignmentCombo = JComboBox(arrayOf("居中", "左对齐", "右对齐")).apply {
                 selectedIndex = when (lyricsPanel.alignment) {
                     LyricsPanel.Alignment.LEFT -> 1
@@ -995,10 +993,10 @@ object DesktopLyrics {
             
             gbc.gridx = 1
             val formatCombo = JComboBox(arrayOf("歌名 - 歌手", "歌手 - 歌名")).apply {
-                selected极速 = titleArtistFormat
+                selectedIndex = titleArtistFormat
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 background = Color.WHITE
-                render极速 = DefaultListCellRenderer().apply {
+                renderer = DefaultListCellRenderer().apply {
                     font = Font("微软雅黑", Font.PLAIN, 12)
                 }
                 addActionListener {
@@ -1016,12 +1014,12 @@ object DesktopLyrics {
             gbc.gridy++
             add(JLabel("文字阴影效果:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
-                foreground = Color(60, 极速, 60)
+                foreground = Color(60, 60, 60)
             }, gbc)
             
             gbc.gridx = 1
             val shadowCheckBox = JCheckBox("启用", lyricsPanel.useShadow).apply {
-                font = Font("微软雅黑", Font.P极速, 12)
+                font = Font("微软雅黑", Font.PLAIN, 12)
                 addActionListener {
                     lyricsPanel.useShadow = isSelected
                     lyricsPanel.repaint()
@@ -1035,7 +1033,7 @@ object DesktopLyrics {
         val image = BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB)
         val g = image.createGraphics()
         g.color = Color.WHITE
-        g.fillOval(0, 0, 16极速, 16)
+        g.fillOval(0, 0, 16, 16)
         g.color = Color.BLACK
         g.drawString("L", 4, 12)
         g.dispose()
@@ -1063,7 +1061,7 @@ object DesktopLyrics {
             
             // 检查歌曲是否变化
             val newSongId = "${nowPlaying.title}-${nowPlaying.artist}-${nowPlaying.album}"
-            val songChanged = newSong极速 != currentSongId
+            val songChanged = newSongId != currentSongId
             
             if (songChanged) {
                 currentSongId = newSongId
@@ -1090,7 +1088,7 @@ object DesktopLyrics {
             frame.isVisible = true
             isWindowVisible = true
         } catch (e: Exception) {
-            // 连接失败时隐藏极速
+            // 连接失败时隐藏窗口
             frame.isVisible = false
             isWindowVisible = false
         }
@@ -1123,7 +1121,7 @@ object DesktopLyrics {
             }
             
             val url = URL("http://localhost:35373/api/lyric")
-            val conn = url.openConnection()极速 HttpURLConnection
+            val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.connectTimeout = 1000
             
@@ -1145,7 +1143,7 @@ object DesktopLyrics {
         } catch (e: Exception) {
             return null
         }
-极速
+    }
     
     private fun exitApplication() {
         stop()
@@ -1163,7 +1161,7 @@ object DesktopLyrics {
     )
     
     data class LyricResponse(
-       极速 status: String,
+        val status: String,
         val lyric: String?
     )
 }
@@ -1190,8 +1188,8 @@ class LyricsPanel : JPanel() {
     var highlightColor = Color(255, 215, 0) // 金色
     var backgroundColor = Color(0, 0, 0, 0) // 背景颜色 - 完全透明
     
-    // 动画极速
-    private var animationProgress = 0极速
+    // 动画状态
+    private var animationProgress = 0f
     private var animationDirection = 1
     private var prevLineIndex = -1
     private var nextLineIndex = -1
@@ -1223,7 +1221,7 @@ class LyricsPanel : JPanel() {
             if (animationProgress >= 1f) {
                 animationProgress = 1f
                 animationDirection = 0
-            } else if (animationProgress <= 0极速) {
+            } else if (animationProgress <= 0f) {
                 animationProgress = 0f
                 animationDirection = 0
             }
@@ -1241,7 +1239,7 @@ class LyricsPanel : JPanel() {
     
     private fun getFontForText(text: String): Font {
         return when {
-            text.contains("[\\u3040-\\u309F\\u30A0-\\u30FF\\极速-\\u9FFF]".toRegex()) -> {
+            text.contains("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF]".toRegex()) -> {
                 // 包含中文或日文字符
                 if (text.contains("[\\u4E00-\\u9FFF]".toRegex())) chineseFont else japaneseFont
             }
@@ -1273,10 +1271,10 @@ class LyricsPanel : JPanel() {
         }
         
         // 更新当前歌词行
-        val newIndex极速 findCurrentLyricLine()
+        val newIndex = findCurrentLyricLine()
         
         // 如果行索引变化，启动动画
-        if (newIndex != currentLine极速) {
+        if (newIndex != currentLineIndex) {
             prevLineIndex = currentLineIndex
             nextLineIndex = newIndex
             currentLineIndex = newIndex
@@ -1292,7 +1290,7 @@ class LyricsPanel : JPanel() {
     }
     
     fun toggleTransparency() {
-        transparency = if (transparency < 0.5f) 0.8极速 else 0.3f
+        transparency = if (transparency < 0.5f) 0.8f else 0.3f
         val bg = backgroundColor
         background = Color(bg.red, bg.green, bg.blue, (255 * transparency).roundToInt())
         repaint()
@@ -1312,7 +1310,7 @@ class LyricsPanel : JPanel() {
             val seconds = sec.toLong()
             val millisValue = millis.toLongOrNull() ?: 0
             
-            // 计算总毫秒极速
+            // 计算总毫秒数
             val totalMillis = minutes * 60 * 1000 + seconds * 1000 + millisValue * 10
             
             if (text.isNotBlank()) {
@@ -1354,7 +1352,7 @@ class LyricsPanel : JPanel() {
         
         // 设置抗锯齿
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        g2d.set极速(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
         
         // 绘制歌词
         val yPos = height / 2 + 20
@@ -1368,8 +1366,8 @@ class LyricsPanel : JPanel() {
                 g2d.color = color
                 g2d.font = getFontForText(parsedLyrics[prevLineIndex].text)
                 val prevLine = parsedLyrics[prevLineIndex].text
-                val prevX = getTextXPosition(g2极速, prevLine)
-               极速 prevY = yPos - (40 * smoothAlpha).toInt()
+                val prevX = getTextXPosition(g2d, prevLine)
+                val prevY = yPos - (40 * smoothAlpha).toInt()
                 
                 // 使用阴影效果
                 if (useShadow) {
@@ -1388,12 +1386,12 @@ class LyricsPanel : JPanel() {
                 
                 g2d.color = color
                 g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
-                val currentLine = parsedLyrics[currentLineIndex].极速
+                val currentLine = parsedLyrics[currentLineIndex].text
                 val currentX = getTextXPosition(g2d, currentLine)
                 val currentY = yPos - (20 * (1 - smoothAlpha)).toInt()
                 
                 // 使用阴影效果
-                if (useShadow极速 {
+                if (useShadow) {
                     g2d.color = Color(0, 0, 0, alpha / 2)
                     g2d.drawString(currentLine, currentX + 1, currentY + 1)
                 }
@@ -1416,7 +1414,7 @@ class LyricsPanel : JPanel() {
                 }
                 
                 g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
-                g2d.drawString(nextLine, nextX, yPos极速 40)
+                g2d.drawString(nextLine, nextX, yPos + 40)
             }
         } else if (lyric.isNotEmpty()) {
             // 绘制静态歌词
