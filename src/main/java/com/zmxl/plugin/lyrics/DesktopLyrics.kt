@@ -82,6 +82,9 @@ object DesktopLyrics {
     private val ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
     private val WCA_ACCENT_POLICY = 19
     
+    // 自定义Windows常量
+    private val WS_EX_TOOLWINDOW = 0x00000080L
+    
     // JNA结构体定义
     @Structure.FieldOrder("AccentState", "AccentFlags", "GradientColor", "AnimationId")
     class AccentPolicy : Structure() {
@@ -182,7 +185,6 @@ object DesktopLyrics {
             
             // 关键修复：确保窗口不会获取焦点或阻止其他应用程序
             isFocusable = false
-            isFocusableWindowState = false
             focusableWindowState = false
             
             // 创建内容面板
@@ -334,7 +336,7 @@ object DesktopLyrics {
                 val currentStyle = User32.INSTANCE.GetWindowLong(hwnd, User32.GWL_EXSTYLE)
                 
                 // 设置窗口为工具窗口样式，这样它不会出现在任务栏上，也不会获取焦点
-                val newStyle = currentStyle or User32.WS_EX_TOOLWINDOW
+                val newStyle = currentStyle or WS_EX_TOOLWINDOW.toInt()
                 
                 User32.INSTANCE.SetWindowLong(hwnd, User32.GWL_EXSTYLE, newStyle)
             } catch (e: Exception) {
@@ -654,7 +656,7 @@ object DesktopLyrics {
             e.printStackTrace()
         }
         
-        val tabedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
+        val tabbedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
             border = EmptyBorder(10, 10, 10, 10)
             background = Color(240, 240, 240)
             font = Font("微软雅黑", Font.PLAIN, 12)
@@ -669,11 +671,11 @@ object DesktopLyrics {
         // 其他设置面板
         val otherPanel = createOtherPanel(dialog)
         
-        tabedPane.addTab("字体", fontPanel)
-        tabedPane.addTab("颜色", colorPanel)
-        tabedPane.addTab("其他", otherPanel)
+        tabbedPane.addTab("字体", fontPanel)
+        tabbedPane.addTab("颜色", colorPanel)
+        tabbedPane.addTab("其他", otherPanel)
         
-        dialog.add(tabedPane, BorderLayout.CENTER)
+        dialog.add(tabbedPane, BorderLayout.CENTER)
         
         // 添加关闭按钮
         val closeButton = JButton("关闭").apply {
