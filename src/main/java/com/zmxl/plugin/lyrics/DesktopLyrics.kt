@@ -202,7 +202,7 @@ object DesktopLyrics {
             }
             
 
-            setSize(740, 180)
+            setSize(560, 180)
             setLocationRelativeTo(null)
             
             // 添加键盘快捷键
@@ -1532,3 +1532,4 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
