@@ -62,6 +62,13 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
     override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): String? {
         PlaybackStateHolder.currentMedia = mediaItem
         
+        // 生成当前歌曲的唯一ID
+        val songId = "${mediaItem.title}-${mediaItem.artist}-${mediaItem.album}"
+        PlaybackStateHolder.setCurrentSongId(songId)
+        
+        // 清除之前的歌词缓存
+        PlaybackStateHolder.clearCurrentLyrics()
+        
         // 重置歌词和封面URL
         PlaybackStateHolder.lyricUrl = null
         PlaybackStateHolder.coverUrl = null
@@ -69,7 +76,7 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         // 重置播放位置
         PlaybackStateHolder.resetPosition()
         
-        // 启动后台线程获取歌词和封面信息
+        // 启动后台线程获取歌词和封面信息（首选网络）
         thread {
             try {
                 // 构建搜索URL
@@ -99,6 +106,7 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
                 }
             } catch (e: Exception) {
                 println("获取歌词/封面失败: ${e.message}")
+                // 网络获取失败，将依赖SPW提供的歌词行
             }
         }
         
@@ -106,9 +114,24 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
     }
     
     override fun onLyricsLineUpdated(lyricsLine: PlaybackExtensionPoint.LyricsLine?) {
-        // 可以在这里处理歌词行更新
+        // 处理歌词行更新
         lyricsLine?.let { line ->
             println("歌词行更新: ${line.pureMainText} (${line.startTime}-${line.endTime})")
+            
+            // 合并主要文本和翻译文本
+            val combinedText = if (line.pureSubText != null && line.pureSubText.isNotEmpty()) {
+                "${line.pureMainText}\n${line.pureSubText}"
+            } else {
+                line.pureMainText
+            }
+            
+            // 将歌词行添加到缓存
+            val lyricLine = PlaybackStateHolder.LyricLine(
+                line.startTime,
+                combinedText
+            )
+            
+            PlaybackStateHolder.addLyricLine(lyricLine)
         }
     }
     
