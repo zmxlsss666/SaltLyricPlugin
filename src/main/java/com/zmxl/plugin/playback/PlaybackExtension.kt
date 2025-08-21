@@ -118,9 +118,10 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         lyricsLine?.let { line ->
             println("歌词行更新: ${line.pureMainText} (${line.startTime}-${line.endTime})")
             
-            // 合并主要文本和翻译文本
-            val combinedText = if (line.pureSubText != null && line.pureSubText.isNotEmpty()) {
-                "${line.pureMainText}\n${line.pureSubText}"
+            // 修复：避免对来自不同模块的属性进行智能转换
+            val pureSubText = line.pureSubText
+            val combinedText = if (pureSubText != null && pureSubText.isNotEmpty()) {
+                "${line.pureMainText}\n${pureSubText}"
             } else {
                 line.pureMainText
             }
