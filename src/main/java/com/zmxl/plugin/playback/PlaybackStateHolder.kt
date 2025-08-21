@@ -2,8 +2,8 @@ package com.zmxl.plugin.playback
 
 import com.xuncorp.spw.workshop.api.PlaybackExtensionPoint
 import org.pf4j.Extension
-import java.util.Timer
-import java.util.TimerTask
+import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 object PlaybackStateHolder {
     @Volatile
@@ -25,6 +25,13 @@ object PlaybackStateHolder {
     private var positionUpdateTimer: Timer? = null
     private var lastPositionUpdateTime: Long = 0
     private var previousVolumeBeforeMute: Int = 100 // 静音前的音量
+    
+    // 存储从SPW获取的歌词行，按歌曲ID分组
+    private val lyricsCache = ConcurrentHashMap<String, MutableList<LyricLine>>()
+    
+    // 当前歌曲ID
+    @Volatile
+    private var currentSongId: String? = null
     
     // 开始更新播放进度
     fun startPositionUpdate() {
@@ -74,4 +81,78 @@ object PlaybackStateHolder {
             volume = previousVolumeBeforeMute
         }
     }
+    
+    // 添加方法：设置当前歌曲ID
+    fun setCurrentSongId(songId: String) {
+        currentSongId = songId
+        // 如果缓存中没有这首歌的歌词，初始化一个空列表
+        lyricsCache.putIfAbsent(songId, mutableListOf())
+    }
+    
+    // 添加方法：添加歌词行
+    fun addLyricLine(line: LyricLine) {
+        currentSongId?.let { songId ->
+            val lines = lyricsCache.getOrPut(songId) { mutableListOf() }
+            
+            // 检查是否已存在相同时间的歌词行
+            val existingIndex = lines.indexOfFirst { it.time == line.time }
+            
+            if (existingIndex >= 0) {
+                // 更新现有行
+                lines[existingIndex] = line
+            } else {
+                // 添加新行并保持按时间排序
+                lines.add(line)
+                lines.sortBy { it.time }
+            }
+        }
+    }
+    
+    // 添加方法：获取当前行和下一行歌词
+    fun getCurrentAndNextLyrics(currentPosition: Long): Pair<LyricLine?, LyricLine?> {
+        currentSongId?.let { songId ->
+            val lines = lyricsCache[songId] ?: return Pair(null, null)
+            
+            // 找到当前时间对应的歌词行
+            var currentLine: LyricLine? = null
+            var nextLine: LyricLine? = null
+            
+            for (i in lines.indices) {
+                if (lines[i].time > currentPosition) {
+                    nextLine = lines[i]
+                    if (i > 0) {
+                        currentLine = lines[i - 1]
+                    }
+                    break
+                }
+                
+                // 如果是最后一行
+                if (i == lines.size - 1 && lines[i].time <= currentPosition) {
+                    currentLine = lines[i]
+                }
+            }
+            
+            return Pair(currentLine, nextLine)
+        }
+        
+        return Pair(null, null)
+    }
+    
+    // 添加方法：清除当前歌曲的歌词缓存
+    fun clearCurrentLyrics() {
+        currentSongId?.let { songId ->
+            lyricsCache.remove(songId)
+        }
+    }
+    
+    // 添加方法：获取当前歌曲的所有歌词（用于调试）
+    fun getAllLyrics(): List<LyricLine> {
+        currentSongId?.let { songId ->
+            return lyricsCache[songId] ?: emptyList()
+        }
+        return emptyList()
+    }
+    
+    // 歌词行数据类
+    data class LyricLine(val time: Long, val text: String)
 }
