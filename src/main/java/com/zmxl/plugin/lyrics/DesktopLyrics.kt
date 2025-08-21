@@ -550,7 +550,7 @@ object DesktopLyrics {
         val image = createTrayIconImage()
         val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
         
-        // 使用AWT的PopupMenu，但设置正确的字体编码
+        // 使用AWT的PopupMenu
         val popup = PopupMenu()
         
         // 添加显示/隐藏菜单
@@ -581,19 +581,17 @@ object DesktopLyrics {
         popup.addSeparator()
         popup.add(exitItem)
         
-        // 设置系统编码，确保中文正确显示
+        // 设置菜单字体，避免乱码
         try {
-            System.setProperty("file.encoding", "UTF-8")
-            val field = Charset::class.java.getDeclaredField("defaultCharset")
-            field.isAccessible = true
-            field.set(null, null)
+            // 尝试使用支持中文的字体
+            val availableFonts = GraphicsEnvironment.getLocalGraphicsEnvironment().availableFontFamilyNames
+            val chineseFont = availableFonts.find { 
+                it.contains("YaHei") || it.contains("微软") || it.contains("Microsoft") || it.contains("SimHei") 
+            } ?: "Dialog"
             
-            // 设置菜单字体
-            val font = createFont("Microsoft YaHei", Font.PLAIN, 12)
-            if (font != null) {
-                for (i in 0 until popup.itemCount) {
-                    popup.getItem(i).font = font
-                }
+            val font = Font(chineseFont, Font.PLAIN, 12)
+            for (i in 0 until popup.itemCount) {
+                popup.getItem(i).font = font
             }
         } catch (e: Exception) {
             println("设置菜单字体失败: ${e.message}")
@@ -614,17 +612,6 @@ object DesktopLyrics {
             tray.add(trayIcon)
         } catch (e: AWTException) {
             println("无法添加系统托盘图标: ${e.message}")
-        }
-    }
-    
-    // 辅助方法：创建字体
-    private fun createFont(name: String, style: Int, size: Int): Font? {
-        return try {
-            Font(name, style, size)
-        } catch (e: Exception) {
-            // 如果指定字体不可用，使用默认字体
-            println("无法创建字体 $name: ${e.message}")
-            Font(Font.DIALOG, style, size)
         }
     }
     
@@ -1480,6 +1467,7 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
 
 
 
