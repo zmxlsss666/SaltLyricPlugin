@@ -59,60 +59,55 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         return onBeforeLoadLyrics(mediaItem)
     }
 
-    override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): String? {
-        PlaybackStateHolder.currentMedia = mediaItem
-        
-        // 生成当前歌曲的唯一ID
-        val songId = "${mediaItem.title}-${mediaItem.artist}-${mediaItem.album}"
-        PlaybackStateHolder.setCurrentSongId(songId)
-        
-        // 清除之前的歌词缓存
-        PlaybackStateHolder.clearCurrentLyrics()
-        
-        // 重置歌词和封面URL
-        PlaybackStateHolder.lyricUrl = null
-        PlaybackStateHolder.coverUrl = null
-        
-        // 重置播放位置
-        PlaybackStateHolder.resetPosition()
-        
-        // 启动后台线程获取歌词和封面信息（首选网络）
-        thread {
-            try {
-                // 构建搜索URL
-                val searchQuery = "${mediaItem.title}-${mediaItem.artist}"
-                val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
-                val searchUrl = "https://music.163.com/api/search/get?type=1&offset=0&limit=1&s=$encodedQuery"
+override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): String? {
+    PlaybackStateHolder.currentMedia = mediaItem
+    
+    // 生成当前歌曲的唯一ID
+    val songId = "${mediaItem.title}-${mediaItem.artist}-${mediaItem.album}"
+    PlaybackStateHolder.setCurrentSongId(songId)
+    
+    // 清除之前的歌词缓存
+    PlaybackStateHolder.clearCurrentLyrics()
+    
+    // 重置播放位置
+    PlaybackStateHolder.resetPosition()
+    
+    // 启动后台线程获取歌词和封面信息（首选网络）
+    thread {
+        try {
+            // 构建搜索URL
+            val searchQuery = "${mediaItem.title}-${mediaItem.artist}"
+            val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
+            val searchUrl = "https://music.163.com/api/search/get?type=1&offset=0&limit=1&s=$encodedQuery"
+            
+            // 执行搜索请求
+            val searchResult = getUrlContent(searchUrl)
+            val searchJson = JSONObject(searchResult)
+            val songs = searchJson.getJSONObject("result").getJSONArray("songs")
+            
+            if (songs.length() > 0) {
+                val songId = songs.getJSONObject(0).getInt("id")
                 
-                // 执行搜索请求
-                val searchResult = getUrlContent(searchUrl)
-                val searchJson = JSONObject(searchResult)
-                val songs = searchJson.getJSONObject("result").getJSONArray("songs")
+                // 获取歌曲详细信息
+                val songInfoUrl = "https://api.injahow.cn/meting/?type=song&id=$songId"
+                val songInfoResult = getUrlContent(songInfoUrl)
+                val songInfoArray = JSONArray(songInfoResult)
                 
-                if (songs.length() > 0) {
-                    val songId = songs.getJSONObject(0).getInt("id")
-                    
-                    // 获取歌曲详细信息
-                    val songInfoUrl = "https://api.injahow.cn/meting/?type=song&id=$songId"
-                    val songInfoResult = getUrlContent(songInfoUrl)
-                    val songInfoArray = JSONArray(songInfoResult)
-                    
-                    if (songInfoArray.length() > 0) {
-                        val songInfo = songInfoArray.getJSONObject(0)
-                        PlaybackStateHolder.lyricUrl = songInfo.getString("lrc")
-                        PlaybackStateHolder.coverUrl = songInfo.getString("pic")
-                        println("获取歌词和封面成功: lyricUrl=${PlaybackStateHolder.lyricUrl}, coverUrl=${PlaybackStateHolder.coverUrl}")
-                    }
+                if (songInfoArray.length() > 0) {
+                    val songInfo = songInfoArray.getJSONObject(0)
+                    PlaybackStateHolder.coverUrl = songInfo.getString("pic")
+                    println("获取封面成功: coverUrl=${PlaybackStateHolder.coverUrl}")
                 }
-            } catch (e: Exception) {
-                println("获取歌词/封面失败: ${e.message}")
-                // 网络获取失败，将依赖SPW提供的歌词行
             }
+        } catch (e: Exception) {
+            println("获取歌词/封面失败: ${e.message}")
+            // 网络获取失败，将依赖SPW提供的歌词行
         }
-        
-        return null // 使用默认歌词逻辑
     }
     
+    return null // 使用默认歌词逻辑
+}
+
     override fun onLyricsLineUpdated(lyricsLine: PlaybackExtensionPoint.LyricsLine?) {
         // 处理歌词行更新
         lyricsLine?.let { line ->
@@ -227,3 +222,4 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
         }
     }
 }
+
