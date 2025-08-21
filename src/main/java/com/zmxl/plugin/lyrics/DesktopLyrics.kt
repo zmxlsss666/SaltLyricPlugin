@@ -548,78 +548,83 @@ object DesktopLyrics {
         
         val tray = SystemTray.getSystemTray()
         val image = createTrayIconImage()
+        val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
         
-        // 创建自定义托盘图标
-        val trayIcon = object : TrayIcon(image, "Salt Player 桌面歌词") {
-            override fun addActionListener(listener: ActionListener) {
-                // 重写此方法以避免默认行为
+        // 使用AWT的PopupMenu，但设置正确的字体编码
+        val popup = PopupMenu()
+        
+        // 添加显示/隐藏菜单
+        val toggleItem = MenuItem("显示/隐藏")
+        toggleItem.addActionListener { 
+            frame.isVisible = !frame.isVisible
+            isWindowVisible = frame.isVisible
+            if (frame.isVisible) {
+                updateLyrics()
             }
         }
         
-        // 创建自定义弹出菜单
-        val popupMenu = JPopupMenu().apply {
-            background = Color(240, 240, 240)
-            border = BorderFactory.createLineBorder(Color(200, 200, 200))
-        }
+        // 添加锁定/解锁菜单
+        val lockItem = MenuItem(if (isLocked) "解锁" else "锁定")
+        lockItem.addActionListener { toggleLock() }
         
-        // 添加显示/隐藏菜单项
-        val toggleItem = JMenuItem("显示/隐藏").apply {
-            font = Font("Microsoft YaHei", Font.PLAIN, 12)
-            addActionListener {
-                frame.isVisible = !frame.isVisible
-                isWindowVisible = frame.isVisible
-                if (frame.isVisible) {
-                    updateLyrics()
+        // 添加设置菜单
+        val settingsItem = MenuItem("设置")
+        settingsItem.addActionListener { showSettingsDialog() }
+        
+        // 添加退出菜单
+        val exitItem = MenuItem("退出")
+        exitItem.addActionListener { exitApplication() }
+        
+        popup.add(toggleItem)
+        popup.add(lockItem)
+        popup.add(settingsItem)
+        popup.addSeparator()
+        popup.add(exitItem)
+        
+        // 设置系统编码，确保中文正确显示
+        try {
+            System.setProperty("file.encoding", "UTF-8")
+            val field = Charset::class.java.getDeclaredField("defaultCharset")
+            field.isAccessible = true
+            field.set(null, null)
+            
+            // 设置菜单字体
+            val font = createFont("Microsoft YaHei", Font.PLAIN, 12)
+            if (font != null) {
+                for (i in 0 until popup.itemCount) {
+                    popup.getItem(i).font = font
                 }
             }
+        } catch (e: Exception) {
+            println("设置菜单字体失败: ${e.message}")
         }
-        popupMenu.add(toggleItem)
         
-        // 添加锁定/解锁菜单项
-        val lockItem = JMenuItem(if (isLocked) "解锁" else "锁定").apply {
-            font = Font("Microsoft YaHei", Font.PLAIN, 12)
-            addActionListener { toggleLock() }
-        }
-        popupMenu.add(lockItem)
+        trayIcon.popupMenu = popup
         
-        // 添加设置菜单项
-        val settingsItem = JMenuItem("设置").apply {
-            font = Font("Microsoft YaHei", Font.PLAIN, 12)
-            addActionListener { showSettingsDialog() }
-        }
-        popupMenu.add(settingsItem)
-        
-        popupMenu.add(JSeparator())
-        
-        // 添加退出菜单项
-        val exitItem = JMenuItem("退出").apply {
-            font = Font("Microsoft YaHei", Font.PLAIN, 12)
-            addActionListener { exitApplication() }
-        }
-        popupMenu.add(exitItem)
-        
-        // 使用MouseListener来显示自定义弹出菜单
-        trayIcon.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                if (e.button == MouseEvent.BUTTON1) {
-                    // 左键点击 - 切换窗口显示/隐藏
-                    frame.isVisible = !frame.isVisible
-                    isWindowVisible = frame.isVisible
-                    if (frame.isVisible) {
-                        updateLyrics()
-                    }
-                } else if (e.button == MouseEvent.BUTTON3) {
-                    // 右键点击 - 显示自定义菜单
-                    val point = MouseInfo.getPointerInfo().location
-                    popupMenu.show(null, point.x, point.y)
-                }
+        // 添加点击监听器
+        trayIcon.addActionListener { 
+            frame.isVisible = !frame.isVisible
+            isWindowVisible = frame.isVisible
+            if (frame.isVisible) {
+                updateLyrics()
             }
-        })
+        }
         
         try {
             tray.add(trayIcon)
         } catch (e: AWTException) {
             println("无法添加系统托盘图标: ${e.message}")
+        }
+    }
+    
+    // 辅助方法：创建字体
+    private fun createFont(name: String, style: Int, size: Int): Font? {
+        return try {
+            Font(name, style, size)
+        } catch (e: Exception) {
+            // 如果指定字体不可用，使用默认字体
+            println("无法创建字体 $name: ${e.message}")
+            Font(Font.DIALOG, style, size)
         }
     }
     
@@ -1475,6 +1480,7 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
 
 
 
