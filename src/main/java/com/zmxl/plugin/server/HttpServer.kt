@@ -320,53 +320,6 @@ class HttpServer(private val port: Int) {
         }
     }
 
-    /**
-     * 网易云音乐网络歌词API
-     */
-    class Lyric163Servlet : HttpServlet() {
-        private val gson = Gson()
-        
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-            
-            val media = PlaybackStateHolder.currentMedia
-            if (media == null) {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "没有当前媒体信息"
-                )))
-                return
-            }
-            
-            try {
-                val lyricContent = getLyricFromNetwork(media.title, media.artist)
-                
-                if (lyricContent != null && lyricContent.isNotBlank()) {
-                    val response = mapOf(
-                        "status" to "success",
-                        "lyric" to lyricContent,
-                        "source" to "network"
-                    )
-                    resp.writer.write(gson.toJson(response))
-                } else {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "未找到网络歌词"
-                    )))
-                }
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "获取网络歌词失败: ${e.message}"
-                )))
-            }
-        }
-        
-        // 从网络API获取歌词 - 使用正确的网易云音乐API
 /**
  * 网易云音乐网络歌词API
  */
@@ -687,4 +640,5 @@ class Lyric163Servlet : HttpServlet() {
         }
     }
 }
+
 
