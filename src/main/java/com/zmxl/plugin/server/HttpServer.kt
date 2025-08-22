@@ -367,63 +367,175 @@ class HttpServer(private val port: Int) {
         }
         
         // 从网络API获取歌词 - 使用正确的网易云音乐API
-        private fun getLyricFromNetwork(title: String?, artist: String?): String? {
-            if (title.isNullOrBlank()) return null
-            
-            try {
-                // 构建搜索URL - 使用正确的网易云音乐API
-                val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
-                val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
-                val searchUrl = "https://music.163.com/api/search/get?type=1&offset=0&limit=1&s=$encodedQuery"
-                
-                // 执行搜索请求
-                val searchResult = getUrlContent(searchUrl)
-                val searchJson = JSONObject(searchResult)
-                
-                // 检查是否有结果
-                if (!searchJson.has("result") || searchJson.isNull("result")) {
-                    return null
-                }
-                
-                val result = searchJson.getJSONObject("result")
-                if (!result.has("songs") || result.isNull("songs")) {
-                    return null
-                }
-                
-                val songs = result.getJSONArray("songs")
-                
-                if (songs.length() > 0) {
-                    // 获取第一首歌曲的ID
-                    val songId = songs.getJSONObject(0).getInt("id")
-                    
-                    // 使用api.injahow.cn获取歌词
-                    val lyricUrl = "https://api.injahow.cn/meting/?type=lyric&id=$songId"
-                    val lyricResult = getUrlContent(lyricUrl)
-                    val lyricObj = JSONObject(lyricResult)
-                    
-                    if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
-                        return lyricObj.getString("lyric")
-                    }
-                }
-            } catch (e: Exception) {
-                println("从网络获取歌词失败: ${e.message}")
-                throw e // 重新抛出异常，让调用方处理
-            }
-            
-            return null
+/**
+ * 网易云音乐网络歌词API
+ */
+class Lyric163Servlet : HttpServlet() {
+    private val gson = Gson()
+    
+    @Throws(IOException::class)
+    override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+        resp.contentType = "application/json;charset=UTF-8"
+        
+        val media = PlaybackStateHolder.currentMedia
+        if (media == null) {
+            resp.status = HttpServletResponse.SC_NOT_FOUND
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "没有当前媒体信息"
+            )))
+            return
         }
         
-        // 辅助方法：获取URL内容
-        private fun getUrlContent(urlString: String): String {
-            val url = URL(urlString)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 3000 // 3秒超时
-            conn.readTimeout = 3000    // 3秒超时
-            return conn.inputStream.bufferedReader().use { it.readText() }
+        try {
+            // 尝试多种方式获取歌词
+            val lyricContent = tryGetLyricFromMultipleSources(media.title, media.artist)
+            
+            if (lyricContent != null && lyricContent.isNotBlank()) {
+                val response = mapOf(
+                    "status" to "success",
+                    "lyric" to lyricContent,
+                    "source" to "network"
+                )
+                resp.writer.write(gson.toJson(response))
+            } else {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "未找到网络歌词"
+                )))
+            }
+        } catch (e: Exception) {
+            resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "获取网络歌词失败: ${e.message}"
+            )))
         }
     }
+    
+    // 尝试从多个来源获取歌词
+    private fun tryGetLyricFromMultipleSources(title: String?, artist: String?): String? {
+        if (title.isNullOrBlank()) return null
+        
 
+        val lyric1 = getLyricFromNeteaseOfficial(title, artist)
+        if (lyric1 != null) return lyric1
+        
+
+        val lyric2 = getLyricFromInjahow(title, artist)
+        if (lyric2 != null) return lyric2
+        
+        return null
+    }
+    
+    // 从网易云音乐官方API获取歌词
+    private fun getLyricFromNeteaseOfficial(title: String?, artist: String?): String? {
+        try {
+            // 构建搜索URL
+            val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
+            val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
+            val searchUrl = "https://music.163.com/api/search/get?type=1&offset=0&limit=1&s=$encodedQuery"
+            
+            // 执行搜索请求
+            val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Referer" to "https://music.163.com/"
+            ))
+            
+            val searchJson = JSONObject(searchResult)
+            
+            // 检查是否有结果
+            if (!searchJson.has("result") || searchJson.isNull("result")) {
+                return null
+            }
+            
+            val result = searchJson.getJSONObject("result")
+            if (!result.has("songs") || result.isNull("songs")) {
+                return null
+            }
+            
+            val songs = result.getJSONArray("songs")
+            
+            if (songs.length() > 0) {
+                // 获取第一首歌曲的ID
+                val songId = songs.getJSONObject(0).getInt("id")
+                
+                // 使用网易云音乐官方歌词API
+                val lyricUrl = "https://music.163.com/api/song/lyric?id=$songId&lv=1"
+                val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                    "Referer" to "https://music.163.com/"
+                ))
+                
+                val lyricObj = JSONObject(lyricResult)
+                
+                if (lyricObj.has("lrc") && !lyricObj.isNull("lrc") && 
+                    lyricObj.getJSONObject("lrc").has("lyric")) {
+                    return lyricObj.getJSONObject("lrc").getString("lyric")
+                }
+            }
+        } catch (e: Exception) {
+            println("从网易云官方API获取歌词失败: ${e.message}")
+        }
+        
+        return null
+    }
+    
+    // 从api.injahow.cn获取歌词
+    private fun getLyricFromInjahow(title: String?, artist: String?): String? {
+        try {
+            // 构建搜索URL
+            val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
+            val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
+            val searchUrl = "https://api.injahow.cn/meting/?type=search&s=$encodedQuery"
+            
+            // 执行搜索请求
+            val searchResult = getUrlContent(searchUrl)
+            val searchArray = JSONArray(searchResult)
+            
+            if (searchArray.length() > 0) {
+                // 获取第一首歌曲的ID
+                val songId = searchArray.getJSONObject(0).getString("id")
+                
+                // 获取歌词
+                val lyricUrl = "https://api.injahow.cn/meting/?type=lyric&id=$songId"
+                val lyricResult = getUrlContent(lyricUrl)
+                val lyricObj = JSONObject(lyricResult)
+                
+                if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
+                    return lyricObj.getString("lyric")
+                }
+            }
+        } catch (e: Exception) {
+            println("从api.injahow.cn获取歌词失败: ${e.message}")
+        }
+        
+        return null
+    }
+    
+    
+    // 辅助方法：获取URL内容（带请求头）
+    private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
+        val url = URL(urlString)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.connectTimeout = 3000
+        conn.readTimeout = 3000
+        
+        // 添加请求头
+        headers.forEach { (key, value) ->
+            conn.setRequestProperty(key, value)
+        }
+        
+        return conn.inputStream.bufferedReader().use { it.readText() }
+    }
+    
+    // 辅助方法：获取URL内容
+    private fun getUrlContent(urlString: String): String {
+        return getUrlContentWithHeaders(urlString, emptyMap())
+    }
+}
     /**
      * SPW内置歌词API
      */
@@ -575,3 +687,4 @@ class HttpServer(private val port: Int) {
         }
     }
 }
+
