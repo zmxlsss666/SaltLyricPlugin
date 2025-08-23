@@ -23,15 +23,14 @@ object DesktopLyrics {
     private var dragStart: Point? = null
     private var resizeStart: Point? = null
     private var isResizing = false
-    private val resizeArea = 8 // 调整大小的区域宽度
+    private val resizeArea = 8
     
     // 增加定时器间隔以减少性能消耗
-    private val timer = Timer(100) { updateLyrics() } // 从10ms增加到100ms
+    private val timer = Timer(200) { updateLyrics() } // 增加到200ms
     private val gson = Gson()
     
     private var currentSongId = ""
     private var lastLyricUrl = ""
-    private var lyricCache = mutableMapOf<String, String>()
     
     // 字体设置
     private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
@@ -53,9 +52,9 @@ object DesktopLyrics {
     // 毛玻璃效果相关
     private var backgroundAlpha = 0f
     // 增加背景定时器间隔
-    private val backgroundTimer = Timer(50) { // 从16ms增加到50ms
+    private val backgroundTimer = Timer(100) { // 增加到100ms
         val targetAlpha = if (frame.mousePosition != null && !isLocked) 0.9f else 0f
-        backgroundAlpha += (targetAlpha - backgroundAlpha) * 0.15f // 更平滑的过渡
+        backgroundAlpha += (targetAlpha - backgroundAlpha) * 0.1f // 减少过渡频率
         
         if (backgroundAlpha < 0.01f) {
             // 完全透明时禁用毛玻璃效果
@@ -142,7 +141,6 @@ object DesktopLyrics {
             
             User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
         } catch (e: Exception) {
-            println("启用毛玻璃效果失败: ${e.message}")
             // 备用方案：使用半透明背景
             frame.background = Color(0, 0, 0, (alpha / 255f * 180).roundToInt())
         }
@@ -172,7 +170,6 @@ object DesktopLyrics {
             
             User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
         } catch (e: Exception) {
-            println("禁用毛玻璃效果失败: ${e.message}")
             // 备用方案：恢复透明背景
             frame.background = Color(0, 0, 0, 0)
         }
@@ -354,7 +351,7 @@ object DesktopLyrics {
                 
                 User32.INSTANCE.SetWindowLong(hwnd, User32.GWL_EXSTYLE, newStyle)
             } catch (e: Exception) {
-                println("设置窗口工具样式失败: ${e.message}")
+                // 静默处理异常
             }
             
             // 添加系统托盘图标
@@ -399,7 +396,7 @@ object DesktopLyrics {
             
             User32.INSTANCE.SetWindowLong(hwnd, User32.GWL_EXSTYLE, newStyle)
         } catch (e: Exception) {
-            println("设置窗口点击穿透失败: ${e.message}")
+            // 静默处理异常
         }
     }
     
@@ -582,14 +579,13 @@ object DesktopLyrics {
                 conn.connectTimeout = 1000
                 conn.responseCode // 触发请求
             } catch (e: Exception) {
-                println("发送媒体命令失败: ${e.message}")
+                // 静默处理异常
             }
         }.start()
     }
     
     private fun setupSystemTray() {
         if (!SystemTray.isSupported()) {
-            println("系统托盘不支持")
             return
         }
         
@@ -636,7 +632,7 @@ object DesktopLyrics {
                 popup.getItem(i).font = font
             }
         } catch (e: Exception) {
-            println("设置菜单字体失败: ${e.message}")
+            // 静默处理异常
         }
         
         trayIcon.popupMenu = popup
@@ -653,7 +649,7 @@ object DesktopLyrics {
         try {
             tray.add(trayIcon)
         } catch (e: AWTException) {
-            println("无法添加系统托盘图标: ${e.message}")
+            // 静默处理异常
         }
     }
     
@@ -667,7 +663,7 @@ object DesktopLyrics {
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
         } catch (e: Exception) {
-            e.printStackTrace()
+            // 静默处理异常
         }
         
         val tabbedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
