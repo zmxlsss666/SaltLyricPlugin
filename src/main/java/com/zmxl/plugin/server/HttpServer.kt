@@ -46,8 +46,9 @@ class HttpServer(private val port: Int) {
         context.addServlet(ServletHolder(VolumeDownServlet()), "/api/volume/down")
         context.addServlet(ServletHolder(MuteServlet()), "/api/mute")
         
-        // 注册两个歌词API
-        context.addServlet(ServletHolder(Lyric163Servlet()), "/api/lyric163") // 网络歌词API
+        // 注册歌词API
+        context.addServlet(ServletHolder(Lyric163Servlet()), "/api/lyric163") // 网易云歌词API
+        context.addServlet(ServletHolder(LyricQQServlet()), "/api/lyricqq")   // QQ音乐歌词API
         context.addServlet(ServletHolder(LyricSpwServlet()), "/api/lyricspw") // SPW歌词API
         
         context.addServlet(ServletHolder(PicServlet()), "/api/pic")
@@ -451,6 +452,130 @@ class Lyric163Servlet : HttpServlet() {
         return getUrlContentWithHeaders(urlString, emptyMap())
     }
 }
+
+/**
+ * QQ音乐歌词API
+ */
+class LyricQQServlet : HttpServlet() {
+    private val gson = Gson()
+    
+    @Throws(IOException::class)
+    override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+        resp.contentType = "application/json;charset=UTF-8"
+        
+        val media = PlaybackStateHolder.currentMedia
+        if (media == null) {
+            resp.status = HttpServletResponse.SC_NOT_FOUND
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "没有当前媒体信息"
+            )))
+            return
+        }
+        
+        try {
+            // 获取歌词
+            val lyricContent = getLyricFromQQMusic(media.title, media.artist)
+            
+            if (lyricContent != null && lyricContent.isNotBlank()) {
+                val response = mapOf(
+                    "status" to "success",
+                    "lyric" to lyricContent,
+                    "source" to "qqmusic"
+                )
+                resp.writer.write(gson.toJson(response))
+            } else {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "未找到QQ音乐歌词"
+                )))
+            }
+        } catch (e: Exception) {
+            resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "获取QQ音乐歌词失败: ${e.message}"
+            )))
+        }
+    }
+    
+    // 从QQ音乐获取歌词
+    private fun getLyricFromQQMusic(title: String?, artist: String?): String? {
+        if (title.isNullOrBlank()) return null
+        
+        try {
+            // 构建搜索URL
+            val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
+            val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
+            val searchUrl = "https://c.y.qq.com/soso/fcgi-bin/music_search_new_platform?format=json&p=1&n=1&w=$encodedQuery"
+            
+            // 执行搜索请求
+            val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Referer" to "https://y.qq.com/"
+            ))
+            
+            val searchJson = JSONObject(searchResult)
+            
+            // 检查是否有结果
+            if (!searchJson.has("data") || searchJson.isNull("data") || 
+                !searchJson.getJSONObject("data").has("song") || 
+                searchJson.getJSONObject("data").isNull("song") || 
+                searchJson.getJSONObject("data").getJSONObject("song").getJSONArray("list").length() == 0) {
+                return null
+            }
+            
+            // 获取歌曲列表
+            val songList = searchJson.getJSONObject("data").getJSONObject("song").getJSONArray("list")
+            
+            if (songList.length() > 0) {
+                // 获取第一首歌曲的f字段
+                val fField = songList.getJSONObject(0).getString("f")
+                val fParts = fField.split("|")
+                
+                if (fParts.size > 0) {
+                    // 获取歌曲ID（songmid）
+                    val songId = fParts[0]
+                    
+                    // 使用QQ音乐歌词API
+                    val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?format=json&nobase64=1&songmid=$songId"
+                    val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                        "Referer" to "https://y.qq.com/portal/player.html"
+                    ))
+                    
+                    val lyricObj = JSONObject(lyricResult)
+                    
+                    if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
+                        return lyricObj.getString("lyric")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            println("从QQ音乐API获取歌词失败: ${e.message}")
+        }
+        
+        return null
+    }
+    
+    // 辅助方法：获取URL内容（带请求头）
+    private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
+        val url = URL(urlString)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.connectTimeout = 3000
+        conn.readTimeout = 3000
+        
+        // 添加请求头
+        headers.forEach { (key, value) ->
+            conn.setRequestProperty(key, value)
+        }
+        
+        return conn.inputStream.bufferedReader().use { it.readText() }
+    }
+}
+
     /**
      * SPW内置歌词API
      */
