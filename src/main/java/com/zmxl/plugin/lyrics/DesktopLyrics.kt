@@ -592,25 +592,25 @@ object DesktopLyrics {
         })
         
         frame.addMouseMotionListener(object : MouseMotionAdapter() {
-            override fun mouseDragged(e: MouseEvent) {
-                if (!isLocked) {
-                    if (isResizing && resizeStart != null) {
-                        val dx = e.x - resizeStart!!.x
-                        val dy = e.y - resizeStart!!.y
-                        val newWidth = maxOf(frame.width + dx, 300)
-                        val newHeight = maxOf(frame.height + dy, 100)
-                        frame.setSize(newWidth, newHeight)
-                        resizeStart = e.point
-                    } else if (isDragging && dragStart != null) {
-                        val currentLocation = location
-                        setLocation(
-                            currentLocation.x + e.x - dragStart!!.x,
-                            currentLocation.y + e.y - dragStart!!.y
-                        )
-                    }
-                }
-            }
-            
+override fun mouseDragged(e: MouseEvent) {
+    if (!isLocked) {
+        if (isResizing && resizeStart != null) {
+            val dx = e.x - resizeStart!!.x
+            val dy = e.y - resizeStart!!.y
+            val newWidth = maxOf(frame.width + dx, 300)
+            val newHeight = maxOf(frame.height + dy, 100)
+            frame.setSize(newWidth, newHeight)
+            resizeStart = e.point
+        } else if (isDragging && dragStart != null) {
+            // 修复：显式使用 frame 引用
+            val currentLocation = frame.location
+            frame.setLocation(
+                currentLocation.x + e.x - dragStart!!.x,
+                currentLocation.y + e.y - dragStart!!.y
+            )
+        }
+    }
+}
             override fun mouseMoved(e: MouseEvent) {
                 if (!isLocked) {
                     updateCursor(e.point)
@@ -1377,3 +1377,4 @@ object DesktopLyrics {
         stop()
     }
 }
+
