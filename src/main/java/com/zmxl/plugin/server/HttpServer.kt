@@ -513,7 +513,7 @@ class LyricQQServlet : HttpServlet() {
             // 执行搜索请求
             val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Referer" to "https://y.qq.com/"
+                "Referer" to "https://y.qq.com/portal/player.html"
             ))
             
             val searchJson = JSONObject(searchResult)
@@ -727,3 +727,4 @@ class LyricQQServlet : HttpServlet() {
         }
     }
 }
+
