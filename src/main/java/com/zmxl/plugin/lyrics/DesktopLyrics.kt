@@ -25,7 +25,8 @@ object DesktopLyrics {
     private var isResizing = false
     private val resizeArea = 8 // 调整大小的区域宽度
     
-    private val timer = Timer(10) { updateLyrics() }
+    // 增加定时器间隔以减少性能消耗
+    private val timer = Timer(100) { updateLyrics() } // 从10ms增加到100ms
     private val gson = Gson()
     
     private var currentSongId = ""
@@ -51,7 +52,8 @@ object DesktopLyrics {
     
     // 毛玻璃效果相关
     private var backgroundAlpha = 0f
-    private val backgroundTimer = Timer(16) {
+    // 增加背景定时器间隔
+    private val backgroundTimer = Timer(50) { // 从16ms增加到50ms
         val targetAlpha = if (frame.mousePosition != null && !isLocked) 0.9f else 0f
         backgroundAlpha += (targetAlpha - backgroundAlpha) * 0.15f // 更平滑的过渡
         
@@ -201,14 +203,13 @@ object DesktopLyrics {
                 add(topPanel, BorderLayout.NORTH)
             }
             
-
             setSize(560, 180)
             setLocationRelativeTo(null)
             
             // 添加键盘快捷键
             setupKeyboardShortcuts()
             
-            // 添加鼠标事件监听器
+            // 添加鼠标事件监听器 - 修复鼠标事件处理
             addMouseListener(object : MouseAdapter() {
                 override fun mousePressed(e: MouseEvent) {
                     if (!isLocked) {
@@ -249,14 +250,27 @@ object DesktopLyrics {
                 
                 override fun mouseExited(e: MouseEvent) {
                     if (!isLocked) {
-                        // 只有当鼠标不在控制面板上时才隐藏
-                        val point = MouseInfo.getPointerInfo().location
-                        val panelBounds = topPanel.bounds
-                        panelBounds.location = topPanel.locationOnScreen
-                        
-                        if (!panelBounds.contains(point)) {
+                        try {
+                            // 只有当鼠标不在控制面板上时才隐藏
+                            val point = MouseInfo.getPointerInfo().location
+                            val panelBounds = topPanel.bounds
+                            // 修复：检查组件是否显示在屏幕上
+                            if (topPanel.isShowing) {
+                                val panelLocation = topPanel.locationOnScreen
+                                panelBounds.location = panelLocation
+                                
+                                if (!panelBounds.contains(point)) {
+                                    topPanel.isVisible = false
+                                    // 鼠标离开时禁用窗口交互（允许点击穿透）
+                                    setWindowClickThrough(true)
+                                }
+                            } else {
+                                topPanel.isVisible = false
+                                setWindowClickThrough(true)
+                            }
+                        } catch (ex: Exception) {
+                            // 如果获取位置失败，直接隐藏面板
                             topPanel.isVisible = false
-                            // 鼠标离开时禁用窗口交互（允许点击穿透）
                             setWindowClickThrough(true)
                         }
                         frame.cursor = Cursor.getDefaultCursor()
@@ -1268,8 +1282,8 @@ class LyricsPanel : JPanel() {
         isOpaque = false // 设置为不透明，使背景透明
         border = BorderFactory.createEmptyBorder(5, 20, 5, 20) // 减少上下间距
         
-        // 动画定时器 - 使用更平滑的动画
-        Timer(10) {
+        // 动画定时器 - 使用更平滑的动画，增加间隔减少性能消耗
+        Timer(50) { // 从10ms增加到50ms
             // 平滑过渡动画
             smoothPosition += (targetPosition - smoothPosition) * 0.2f
             smoothAlpha += (targetAlpha - smoothAlpha) * 0.2f
