@@ -20,6 +20,9 @@ object DesktopLyrics {
     private val lyricsPanel = LyricsPanel()
     private var isDragging = false
     private var dragStart: Point? = null
+    private var resizeStart: Point? = null
+    private var isResizing = false
+    private val resizeArea = 8 // 调整大小的区域宽度
     
     private val timer = Timer(10) { updateLyrics() }
     private val gson = Gson()
@@ -38,7 +41,7 @@ object DesktopLyrics {
     private var titleArtistFormat = 0 // 0: 歌名-歌手, 1: 歌手-歌名
     
     // 控制按钮面板
-    private lateinit var controlPanel: JPanel
+    private lateinit var topPanel: JPanel
     private lateinit var playPauseButton: JButton
     private lateinit var titleArtistLabel: JLabel
     private lateinit var lockButton: JButton
@@ -182,7 +185,8 @@ object DesktopLyrics {
                 add(lyricsPanel, BorderLayout.CENTER)
                 
                 // 添加顶部控制栏
-                add(createTopControlBar(), BorderLayout.NORTH)
+                topPanel = createTopControlBar()
+                add(topPanel, BorderLayout.NORTH)
             }
             
             // 设置窗口大小和位置
@@ -196,15 +200,22 @@ object DesktopLyrics {
             addMouseListener(object : MouseAdapter() {
                 override fun mousePressed(e: MouseEvent) {
                     if (!isLocked) {
-                        isDragging = true
-                        dragStart = e.point
-                        frame.cursor = Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
+                        if (isInResizeArea(e.point)) {
+                            isResizing = true
+                            resizeStart = e.point
+                            frame.cursor = Cursor.getPredefinedCursor(Cursor.SE_RESIZE_CURSOR)
+                        } else {
+                            isDragging = true
+                            dragStart = e.point
+                            frame.cursor = Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
+                        }
                     }
                 }
                 
                 override fun mouseReleased(e: MouseEvent) {
                     if (!isLocked) {
                         isDragging = false
+                        isResizing = false
                         frame.cursor = Cursor.getDefaultCursor()
                     }
                 }
@@ -217,8 +228,8 @@ object DesktopLyrics {
                 
                 override fun mouseEntered(e: MouseEvent) {
                     if (!isLocked) {
-                        controlPanel.isVisible = true
-                        titleArtistLabel.isVisible = true
+                        topPanel.isVisible = true
+                        updateCursor(e.point)
                     }
                 }
                 
@@ -226,28 +237,52 @@ object DesktopLyrics {
                     if (!isLocked) {
                         // 只有当鼠标不在控制面板上时才隐藏
                         val point = MouseInfo.getPointerInfo().location
-                        val panelBounds = controlPanel.bounds
-                        panelBounds.location = controlPanel.locationOnScreen
+                        val panelBounds = topPanel.bounds
+                        panelBounds.location = topPanel.locationOnScreen
                         
                         if (!panelBounds.contains(point)) {
-                            controlPanel.isVisible = false
-                            titleArtistLabel.isVisible = false
+                            topPanel.isVisible = false
                         }
+                        frame.cursor = Cursor.getDefaultCursor()
                     }
                 }
             })
             
             addMouseMotionListener(object : MouseMotionAdapter() {
                 override fun mouseDragged(e: MouseEvent) {
-                    if (!isLocked && isDragging && dragStart != null) {
-                        val currentLocation = location
-                        setLocation(
-                            currentLocation.x + e.x - dragStart!!.x,
-                            currentLocation.y + e.y - dragStart!!.y
-                        )
+                    if (!isLocked) {
+                        if (isResizing && resizeStart != null) {
+                            val dx = e.x - resizeStart!!.x
+                            val dy = e.y - resizeStart!!.y
+                            val newWidth = maxOf(frame.width + dx, 300)
+                            val newHeight = maxOf(frame.height + dy, 100)
+                            frame.setSize(newWidth, newHeight)
+                            resizeStart = e.point
+                        } else if (isDragging && dragStart != null) {
+                            val currentLocation = location
+                            setLocation(
+                                currentLocation.x + e.x - dragStart!!.x,
+                                currentLocation.y + e.y - dragStart!!.y
+                            )
+                        }
+                    }
+                }
+                
+                override fun mouseMoved(e: MouseEvent) {
+                    if (!isLocked) {
+                        updateCursor(e.point)
                     }
                 }
             })
+            
+            // 添加窗口状态监听器
+            addWindowStateListener { e ->
+                if (e.newState == Frame.NORMAL) {
+                    // 窗口从最小化恢复，强制更新歌词
+                    updateLyrics()
+                    lyricsPanel.repaint()
+                }
+            }
             
             // 添加系统托盘图标
             if (SystemTray.isSupported()) {
@@ -255,10 +290,21 @@ object DesktopLyrics {
             }
             
             // 初始状态隐藏控制面板
-            controlPanel.isVisible = false
-            titleArtistLabel.isVisible = false
+            topPanel.isVisible = false
             
             isVisible = true
+        }
+    }
+    
+    private fun isInResizeArea(point: Point): Boolean {
+        return point.x >= frame.width - resizeArea && point.y >= frame.height - resizeArea
+    }
+    
+    private fun updateCursor(point: Point) {
+        frame.cursor = if (isInResizeArea(point)) {
+            Cursor.getPredefinedCursor(Cursor.SE_RESIZE_CURSOR)
+        } else {
+            Cursor.getDefaultCursor()
         }
     }
     
@@ -266,44 +312,44 @@ object DesktopLyrics {
         return JPanel(BorderLayout()).apply {
             background = Color(0, 0, 0, 0)
             isOpaque = false
-            border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
-            preferredSize = Dimension(frame.width, 40)
+            border = BorderFactory.createEmptyBorder(2, 10, 2, 10) // 减少上下间距
+            preferredSize = Dimension(frame.width, 30) // 减小高度
             
             // 左侧歌曲信息
             titleArtistLabel = JLabel("", SwingConstants.LEFT).apply {
                 foreground = Color.WHITE
-                font = Font("微软雅黑", Font.PLAIN, 14)
+                font = Font("微软雅黑", Font.PLAIN, 12) // 减小字体大小
             }
             
             // 中间控制按钮
-            controlPanel = JPanel(FlowLayout(FlowLayout.CENTER, 5, 0)).apply {
+            val controlPanel = JPanel(FlowLayout(FlowLayout.CENTER, 5, 0)).apply {
                 background = Color(0, 0, 0, 0)
                 isOpaque = false
                 
                 // 添加上一曲按钮
                 val prevButton = JButton("◀").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
+                    font = Font("Segoe UI Symbol", Font.BOLD, 12) // 减小字体大小
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
+                    border = BorderFactory.createEmptyBorder(3, 8, 3, 8) // 减小内边距
                     addActionListener { sendMediaCommand("/api/previous-track") }
                 }
                 
                 // 添加播放/暂停按钮
                 playPauseButton = JButton("▶").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
+                    font = Font("Segoe UI Symbol", Font.BOLD, 12) // 减小字体大小
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
+                    border = BorderFactory.createEmptyBorder(3, 8, 3, 8) // 减小内边距
                     addActionListener { sendMediaCommand("/api/play-pause") }
                 }
                 
                 // 添加下一曲按钮
                 val nextButton = JButton("▶").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
+                    font = Font("Segoe UI Symbol", Font.BOLD, 12) // 减小字体大小
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyRect(5, 10, 5, 10)
+                    border = BorderFactory.createEmptyBorder(3, 8, 3, 8) // 减小内边距
                     addActionListener { sendMediaCommand("/api/next-track") }
                 }
                 
@@ -319,28 +365,28 @@ object DesktopLyrics {
                 
                 // 锁定按钮
                 lockButton = JButton("🔒").apply {
-                    font = Font("Segoe UI Symbol", Font.PLAIN, 14)
+                    font = Font("Segoe UI Symbol", Font.PLAIN, 12) // 减小字体大小
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(5, 8, 5, 8)
+                    border = BorderFactory.createEmptyBorder(3, 6, 3, 6) // 减小内边距
                     addActionListener { toggleLock() }
                 }
                 
                 // 设置按钮
                 settingsButton = JButton("⚙").apply {
-                    font = Font("Segoe UI Symbol", Font.PLAIN, 14)
+                    font = Font("Segoe UI Symbol", Font.PLAIN, 12) // 减小字体大小
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(5, 8, 5, 8)
+                    border = BorderFactory.createEmptyBorder(3, 6, 3, 6) // 减小内边距
                     addActionListener { showSettingsDialog() }
                 }
                 
                 // 最小化按钮
                 minimizeButton = JButton("−").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 16)
+                    font = Font("Segoe UI Symbol", Font.BOLD, 14) // 减小字体大小
                     foreground = Color.WHITE
                     background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(5, 8, 5, 8)
+                    border = BorderFactory.createEmptyBorder(3, 6, 3, 6) // 减小内边距
                     addActionListener { frame.isVisible = false }
                 }
                 
@@ -360,8 +406,7 @@ object DesktopLyrics {
         
         if (isLocked) {
             lockButton.text = "🔒"
-            controlPanel.isVisible = false
-            titleArtistLabel.isVisible = false
+            topPanel.isVisible = false
             disableAcrylicEffect()
         } else {
             lockButton.text = "🔓"
@@ -612,7 +657,7 @@ object DesktopLyrics {
             gbc.gridy++
             add(JLabel("字体大小:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
-                foreground = Color(60, 60, 极光
+                foreground = Color(60, 60, 60)
             }, gbc)
             
             gbc.gridx = 1
@@ -692,7 +737,7 @@ object DesktopLyrics {
             gbc.gridy = 0
             gbc.gridwidth = 2
             add(JLabel("颜色设置").apply { 
-                font = Font("微软雅黑", Font.BOLD, 极光
+                font = Font("微软雅黑", Font.BOLD, 16)
                 foreground = Color(60, 60, 60)
             }, gbc)
             
@@ -700,7 +745,7 @@ object DesktopLyrics {
             gbc.gridy++
             
             // 歌词颜色
-            gbc.gridx = 极
+            gbc.gridx = 0
             add(JLabel("歌词颜色:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
@@ -724,7 +769,7 @@ object DesktopLyrics {
             gbc.gridx = 0
             gbc.gridy++
             add(JLabel("高亮歌词颜色:").apply { 
-                font = Font("极微软雅黑", Font.PLAIN, 12)
+                font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
             }, gbc)
             
@@ -745,7 +790,7 @@ object DesktopLyrics {
             // 背景颜色
             gbc.gridx = 0
             gbc.gridy++
-            add(J极Label("背景颜色:").apply { 
+            add(JLabel("背景颜色:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
             }, gbc)
@@ -766,7 +811,7 @@ object DesktopLyrics {
                     }
                 }
             }
-            add(b极ColorButton, gbc)
+            add(bgColorButton, gbc)
         }
     }
     
@@ -778,7 +823,7 @@ object DesktopLyrics {
             val gbc = GridBagConstraints().apply {
                 insets = Insets(8, 8, 8, 8)
                 anchor = GridBagConstraints.WEST
-                fill =极GridBagConstraints.HORIZONTAL
+                fill = GridBagConstraints.HORIZONTAL
             }
             
             // 标题
@@ -820,7 +865,7 @@ object DesktopLyrics {
             }, gbc)
             
             gbc.gridx = 1
-           极 val animationSlider = JSlider(1, 20, lyricsPanel.animationSpeed).apply {
+            val animationSlider = JSlider(1, 20, lyricsPanel.animationSpeed).apply {
                 addChangeListener {
                     lyricsPanel.animationSpeed = value
                 }
@@ -866,10 +911,10 @@ object DesktopLyrics {
             }, gbc)
             
             gbc.gridx = 1
-            val formatCombo = J极ComboBox(arrayOf("歌名 - 歌手", "歌手 - 歌名")).apply {
+            val formatCombo = JComboBox(arrayOf("歌名 - 歌手", "歌手 - 歌名")).apply {
                 selectedIndex = titleArtistFormat
                 font = Font("微软雅黑", Font.PLAIN, 12)
-                background = Color.W极ITE
+                background = Color.WHITE
                 renderer = DefaultListCellRenderer().apply {
                     font = Font("微软雅黑", Font.PLAIN, 12)
                 }
@@ -886,7 +931,7 @@ object DesktopLyrics {
             // 文本阴影效果
             gbc.gridx = 0
             gbc.gridy++
-            add(JLabel("文字阴影极效果:").apply { 
+            add(JLabel("文字阴影效果:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
             }, gbc)
@@ -895,7 +940,7 @@ object DesktopLyrics {
             val shadowCheckBox = JCheckBox("启用", lyricsPanel.useShadow).apply {
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 addActionListener {
-                    lyrics极Panel.useShadow = isSelected
+                    lyricsPanel.useShadow = isSelected
                     lyricsPanel.repaint()
                 }
             }
@@ -930,7 +975,7 @@ object DesktopLyrics {
             updateTitleArtistDisplay(nowPlaying.title ?: "", nowPlaying.artist ?: "")
             
             // 检查歌曲是否变化
-            val newSong极Id = "${nowPlaying.title}-${nowPlaying.artist}-${nowPlaying.album}"
+            val newSongId = "${nowPlaying.title}-${nowPlaying.artist}-${nowPlaying.album}"
             val songChanged = newSongId != currentSongId
             
             if (songChanged) {
@@ -972,7 +1017,7 @@ object DesktopLyrics {
             if (conn.responseCode != 200) return null
             
             val reader = BufferedReader(InputStreamReader(conn.inputStream))
-           极 val response = reader.readText()
+            val response = reader.readText()
             reader.close()
             
             return gson.fromJson(response, NowPlaying::class.java)
@@ -1039,7 +1084,7 @@ class LyricsPanel : JPanel() {
     private var artist = ""
     private var position = 0L
     private var lyric = ""
-    var parsedLyrics =极 listOf<LyricLine>()
+    var parsedLyrics = listOf<LyricLine>()
     private var currentLineIndex = -1
     var transparency = 0.8f
     var animationSpeed = 10
@@ -1066,7 +1111,7 @@ class LyricsPanel : JPanel() {
     private var smoothPosition = 0f
     private var targetPosition = 0f
     private var smoothAlpha = 0f
-    private极 var targetAlpha = 0f
+    private var targetAlpha = 0f
     
     enum class Alignment {
         LEFT, CENTER, RIGHT
@@ -1075,7 +1120,7 @@ class LyricsPanel : JPanel() {
     init {
         background = backgroundColor
         isOpaque = false // 设置为不透明，使背景透明
-        border = BorderFactory.createEmptyBorder(10, 20, 10, 20)
+        border = BorderFactory.createEmptyBorder(5, 20, 5, 20) // 减少上下间距
         
         // 动画定时器 - 使用更平滑的动画
         Timer(10) {
@@ -1086,11 +1131,11 @@ class LyricsPanel : JPanel() {
             // 歌词行切换动画
             animationProgress += 0.02f * animationSpeed * animationDirection
             
-            if (animationProgress >= 1极f) {
+            if (animationProgress >= 1f) {
                 animationProgress = 1f
                 animationDirection = 0
             } else if (animationProgress <= 0f) {
-                animationProgress = 0极f
+                animationProgress = 0f
                 animationDirection = 0
             }
             
@@ -1109,7 +1154,7 @@ class LyricsPanel : JPanel() {
         return when {
             text.contains("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF]".toRegex()) -> {
                 // 包含中文或日文字符
-                if (text.contains("[\\极u4E00-\\u9FFF]".toRegex())) chineseFont else japaneseFont
+                if (text.contains("[\\u4E00-\\u9FFF]".toRegex())) chineseFont else japaneseFont
             }
             else -> englishFont // 英文或其他
         }
@@ -1145,7 +1190,7 @@ class LyricsPanel : JPanel() {
         if (newIndex != currentLineIndex) {
             prevLineIndex = currentLineIndex
             nextLineIndex = newIndex
-            currentLine极Index = newIndex
+            currentLineIndex = newIndex
             animationProgress = 0f
             animationDirection = 1
             
@@ -1158,13 +1203,13 @@ class LyricsPanel : JPanel() {
     }
     
     fun toggleTransparency() {
-        transparency = if (transparency < 0.5f) 0.8极f else 0.3f
+        transparency = if (transparency < 0.5f) 0.8f else 0.3f
         val bg = backgroundColor
         background = Color(bg.red, bg.green, bg.blue, (255 * transparency).roundToInt())
         repaint()
     }
     
-    private fun parseLyrics(lyricText: String?): List<LyricLine极> {
+    private fun parseLyrics(lyricText: String?): List<LyricLine> {
         if (lyricText.isNullOrEmpty()) return emptyList()
         
         val lines = mutableListOf<LyricLine>()
@@ -1178,7 +1223,7 @@ class LyricsPanel : JPanel() {
             val seconds = sec.toLong()
             val millisValue = millis.toLongOrNull() ?: 0
             
-            // 计算总毫秒极数
+            // 计算总毫秒数
             val totalMillis = minutes * 60 * 1000 + seconds * 1000 + millisValue * 10
             
             if (text.isNotBlank()) {
@@ -1220,9 +1265,9 @@ class LyricsPanel : JPanel() {
         
         // 设置抗锯齿
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        g2极d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
         
-        // 极绘制歌词
+        // 绘制歌词
         val yPos = height / 2 + 20
         
         if (parsedLyrics.isNotEmpty()) {
@@ -1234,8 +1279,8 @@ class LyricsPanel : JPanel() {
                 g2d.color = color
                 g2d.font = getFontForText(parsedLyrics[prevLineIndex].text)
                 val prevLine = parsedLyrics[prevLineIndex].text
-                val prevX = getText极XPosition(g2d, prevLine)
-                val prevY =极 yPos - (40 * smoothAlpha).toInt()
+                val prevX = getTextXPosition(g2d, prevLine)
+                val prevY = yPos - (40 * smoothAlpha).toInt()
                 
                 // 使用阴影效果
                 if (useShadow) {
@@ -1261,7 +1306,7 @@ class LyricsPanel : JPanel() {
                 // 使用阴影效果
                 if (useShadow) {
                     g2d.color = Color(0, 0, 0, alpha / 2)
-                    g2d.drawString(currentLine, currentX + 1, current极Y + 1)
+                    g2d.drawString(currentLine, currentX + 1, currentY + 1)
                 }
                 
                 g2d.color = color
@@ -1305,7 +1350,7 @@ class LyricsPanel : JPanel() {
             val message = "歌词加载中..."
             val messageX = getTextXPosition(g2d, message)
             
-            // 使用阴影极效果
+            // 使用阴影效果
             if (useShadow) {
                 g2d.color = Color(0, 0, 0, 150)
                 g2d.drawString(message, messageX + 1, yPos + 1)
