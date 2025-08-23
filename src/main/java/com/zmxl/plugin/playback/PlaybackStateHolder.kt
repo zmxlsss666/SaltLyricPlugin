@@ -33,6 +33,9 @@ object PlaybackStateHolder {
     @Volatile
     private var currentSongId: String? = null
     
+    // 歌词访问同步锁
+    private val lyricsLock = Any()
+    
     // 开始更新播放进度
     fun startPositionUpdate() {
         stopPositionUpdate() // 确保之前的定时器已停止
@@ -92,18 +95,23 @@ object PlaybackStateHolder {
     // 添加方法：添加歌词行
     fun addLyricLine(line: LyricLine) {
         currentSongId?.let { songId ->
-            val lines = lyricsCache.getOrPut(songId) { mutableListOf() }
-            
-            // 检查是否已存在相同时间的歌词行
-            val existingIndex = lines.indexOfFirst { it.time == line.time }
-            
-            if (existingIndex >= 0) {
-                // 更新现有行
-                lines[existingIndex] = line
-            } else {
-                // 添加新行并保持按时间排序
-                lines.add(line)
-                lines.sortBy { it.time }
+            synchronized(lyricsLock) {
+                val lines = lyricsCache.getOrPut(songId) { mutableListOf() }
+                
+                // 检查是否已存在相同时间的歌词行
+                val existingIndex = lines.indexOfFirst { it.time == line.time }
+                
+                if (existingIndex >= 0) {
+                    // 更新现有行
+                    lines[existingIndex] = line
+                } else {
+                    // 添加新行并保持按时间排序
+                    lines.add(line)
+                    // 使用更安全的排序方法
+                    val sortedLines = lines.sortedBy { it.time }.toMutableList()
+                    lines.clear()
+                    lines.addAll(sortedLines)
+                }
             }
         }
     }
@@ -111,28 +119,30 @@ object PlaybackStateHolder {
     // 添加方法：获取当前行和下一行歌词
     fun getCurrentAndNextLyrics(currentPosition: Long): Pair<LyricLine?, LyricLine?> {
         currentSongId?.let { songId ->
-            val lines = lyricsCache[songId] ?: return Pair(null, null)
-            
-            // 找到当前时间对应的歌词行
-            var currentLine: LyricLine? = null
-            var nextLine: LyricLine? = null
-            
-            for (i in lines.indices) {
-                if (lines[i].time > currentPosition) {
-                    nextLine = lines[i]
-                    if (i > 0) {
-                        currentLine = lines[i - 1]
+            synchronized(lyricsLock) {
+                val lines = lyricsCache[songId] ?: return Pair(null, null)
+                
+                // 找到当前时间对应的歌词行
+                var currentLine: LyricLine? = null
+                var nextLine: LyricLine? = null
+                
+                for (i in lines.indices) {
+                    if (lines[i].time > currentPosition) {
+                        nextLine = lines[i]
+                        if (i > 0) {
+                            currentLine = lines[i - 1]
+                        }
+                        break
                     }
-                    break
+                    
+                    // 如果是最后一行
+                    if (i == lines.size - 1 && lines[i].time <= currentPosition) {
+                        currentLine = lines[i]
+                    }
                 }
                 
-                // 如果是最后一行
-                if (i == lines.size - 1 && lines[i].time <= currentPosition) {
-                    currentLine = lines[i]
-                }
+                return Pair(currentLine, nextLine)
             }
-            
-            return Pair(currentLine, nextLine)
         }
         
         return Pair(null, null)
@@ -141,14 +151,18 @@ object PlaybackStateHolder {
     // 添加方法：清除当前歌曲的歌词缓存
     fun clearCurrentLyrics() {
         currentSongId?.let { songId ->
-            lyricsCache.remove(songId)
+            synchronized(lyricsLock) {
+                lyricsCache.remove(songId)
+            }
         }
     }
     
     // 添加方法：获取当前歌曲的所有歌词（用于调试）
     fun getAllLyrics(): List<LyricLine> {
         currentSongId?.let { songId ->
-            return lyricsCache[songId] ?: emptyList()
+            synchronized(lyricsLock) {
+                return lyricsCache[songId] ?: emptyList()
+            }
         }
         return emptyList()
     }
