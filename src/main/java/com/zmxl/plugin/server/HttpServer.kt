@@ -513,7 +513,7 @@ class LyricQQServlet : HttpServlet() {
             // 执行搜索请求
             val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Referer" to "https://y.qq.com"
+                "Referer" to "https://y.qq.com/"
             ))
             
             val searchJson = JSONObject(searchResult)
@@ -535,25 +535,67 @@ class LyricQQServlet : HttpServlet() {
                 val fParts = fField.split("|")
                 
                 if (fParts.size > 0) {
-                    // 获取歌曲ID（songmid）
-                    val songIdqq = fParts[0]
+                    // 获取歌曲ID（songid）
+                    val songId = fParts[0]
                     
-                    // 使用QQ音乐歌词API
-                    val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?format=json&nobase64=1&songmid=$songIdqq"
-                    val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                        "Referer" to "https://y.qq.com/portal/player.html"
-                    ))
-                    
-                    val lyricObj = JSONObject(lyricResult)
-                    
-                    if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
-                        return lyricObj.getString("lyric")
+                    // 使用歌曲ID获取真实的mid
+                    val mid = getSongMidFromId(songId)
+                    if (mid != null) {
+                        // 使用QQ音乐歌词API获取歌词
+                        val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?format=json&nobase64=1&songmid=$mid"
+                        val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                            "Referer" to "https://y.qq.com/portal/player.html"
+                        ))
+                        
+                        val lyricObj = JSONObject(lyricResult)
+                        
+                        if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
+                            return lyricObj.getString("lyric")
+                        }
                     }
                 }
             }
         } catch (e: Exception) {
             println("从QQ音乐API获取歌词失败: ${e.message}")
+            e.printStackTrace()
+        }
+        
+        return null
+    }
+    
+    // 通过歌曲ID获取真实的mid
+    private fun getSongMidFromId(songId: String): String? {
+        try {
+            val songDetailUrl = "https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?tpl=yqq_song_detail&format=jsonp&callback=getOneSongInfoCallback&songid=$songId"
+            
+            // 获取歌曲详情
+            val songDetailResult = getUrlContentWithHeaders(songDetailUrl, mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Referer" to "https://y.qq.com/"
+            ))
+            
+            // 处理JSONP响应，提取JSON部分
+            val jsonStart = songDetailResult.indexOf('{')
+            val jsonEnd = songDetailResult.lastIndexOf('}') + 1
+            if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                val jsonStr = songDetailResult.substring(jsonStart, jsonEnd)
+                val songDetailJson = JSONObject(jsonStr)
+                
+                // 检查是否有数据
+                if (songDetailJson.has("data") && !songDetailJson.isNull("data")) {
+                    val data = songDetailJson.getJSONArray("data")
+                    if (data.length() > 0) {
+                        val songInfo = data.getJSONObject(0)
+                        if (songInfo.has("mid") && !songInfo.isNull("mid")) {
+                            return songInfo.getString("mid")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            println("获取歌曲mid失败: ${e.message}")
+            e.printStackTrace()
         }
         
         return null
@@ -727,5 +769,6 @@ class LyricQQServlet : HttpServlet() {
         }
     }
 }
+
 
 
