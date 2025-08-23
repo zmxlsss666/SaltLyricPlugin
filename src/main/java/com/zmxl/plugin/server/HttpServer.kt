@@ -371,13 +371,8 @@ class Lyric163Servlet : HttpServlet() {
     private fun tryGetLyricFromMultipleSources(title: String?, artist: String?): String? {
         if (title.isNullOrBlank()) return null
         
-
         val lyric1 = getLyricFromNeteaseOfficial(title, artist)
         if (lyric1 != null) return lyric1
-        
-
-        val lyric2 = getLyricFromInjahow(title, artist)
-        if (lyric2 != null) return lyric2
         
         return null
     }
@@ -434,39 +429,6 @@ class Lyric163Servlet : HttpServlet() {
         
         return null
     }
-    
-    // 从api.injahow.cn获取歌词
-    private fun getLyricFromInjahow(title: String?, artist: String?): String? {
-        try {
-            // 构建搜索URL
-            val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
-            val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
-            val searchUrl = "https://api.injahow.cn/meting/?type=search&s=$encodedQuery"
-            
-            // 执行搜索请求
-            val searchResult = getUrlContent(searchUrl)
-            val searchArray = JSONArray(searchResult)
-            
-            if (searchArray.length() > 0) {
-                // 获取第一首歌曲的ID
-                val songId = searchArray.getJSONObject(0).getString("id")
-                
-                // 获取歌词
-                val lyricUrl = "https://api.injahow.cn/meting/?type=lyric&id=$songId"
-                val lyricResult = getUrlContent(lyricUrl)
-                val lyricObj = JSONObject(lyricResult)
-                
-                if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
-                    return lyricObj.getString("lyric")
-                }
-            }
-        } catch (e: Exception) {
-            println("从api.injahow.cn获取歌词失败: ${e.message}")
-        }
-        
-        return null
-    }
-    
     
     // 辅助方法：获取URL内容（带请求头）
     private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
@@ -640,5 +602,3 @@ class Lyric163Servlet : HttpServlet() {
         }
     }
 }
-
-
