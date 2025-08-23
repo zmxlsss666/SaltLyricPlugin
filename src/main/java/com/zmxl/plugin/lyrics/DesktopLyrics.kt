@@ -190,7 +190,7 @@ object DesktopLyrics {
             }
             
             // 设置窗口大小和位置
-            setSize(800, 180)
+            setSize(560, 180)
             setLocationRelativeTo(null)
             
             // 添加键盘快捷键
@@ -1363,3 +1363,4 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
