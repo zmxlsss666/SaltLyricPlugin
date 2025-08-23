@@ -242,11 +242,21 @@ object DesktopLyrics {
                 override fun mouseExited(e: MouseEvent) {
                     if (!isLocked) {
                         // 只有当鼠标不在控制面板上时才隐藏
-                        val point = MouseInfo.getPointerInfo().location
-                        val panelBounds = topPanel.bounds
-                        panelBounds.location = topPanel.locationOnScreen
-                        
-                        if (!panelBounds.contains(point)) {
+                        try {
+                            val point = MouseInfo.getPointerInfo().location
+                            // 修复：检查组件是否已显示在屏幕上
+                            if (topPanel.isShowing) {
+                                val panelBounds = topPanel.bounds
+                                panelBounds.location = topPanel.locationOnScreen
+                                
+                                if (!panelBounds.contains(point)) {
+                                    topPanel.isVisible = false
+                                }
+                            } else {
+                                topPanel.isVisible = false
+                            }
+                        } catch (ex: Exception) {
+                            // 如果获取位置失败，直接隐藏面板
                             topPanel.isVisible = false
                         }
                         frame.cursor = Cursor.getDefaultCursor()
@@ -367,10 +377,10 @@ object DesktopLyrics {
                     addActionListener { showSettingsDialog() }
                 }
                 
-                // 最小化按钮 - 修复最小化功能
+                // 修复最小化按钮 - 现在真正最小化到任务栏
                 minimizeButton = createControlButton("−").apply {
                     addActionListener { 
-                        frame.extendedState = Frame.ICONIFIED // 正确的最小化方式
+                        frame.extendedState = Frame.ICONIFIED
                     }
                 }
                 
@@ -1396,4 +1406,3 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
-
