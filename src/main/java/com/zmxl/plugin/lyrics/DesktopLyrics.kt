@@ -135,7 +135,9 @@ object DesktopLyrics {
         } catch (e: Exception) {
             println("启用毛玻璃效果失败: ${e.message}")
             // 备用方案：使用半透明背景
-            frame.background = Color(0, 0, 0, (alpha / 255f * 180).roundToInt())
+            frame.background = Color(
+                0, 0, 0, (alpha / 255f * 180).roundToInt()
+            )
         }
     }
     
@@ -175,6 +177,11 @@ object DesktopLyrics {
             isUndecorated = true
             background = Color(0, 0, 0, 0)
             setAlwaysOnTop(true)
+            
+            // 关键修复：设置窗口不获取焦点，允许其他程序正常使用
+            isFocusable = false
+            isFocusableWindowState = false
+            focusableWindowState = false
             
             // 创建内容面板
             contentPane = JPanel(BorderLayout()).apply {
@@ -310,15 +317,15 @@ object DesktopLyrics {
     
     private fun createTopControlBar(): JPanel {
         return JPanel(BorderLayout()).apply {
-            background = Color(0, 0, 0, 0)
-            isOpaque = false
-            border = BorderFactory.createEmptyBorder(2, 10, 2, 10) // 减少上下间距
-            preferredSize = Dimension(frame.width, 30) // 减小高度
+            background = Color(30, 30, 30, 200) // 改为半透明深色背景
+            isOpaque = true // 设置为不透明以显示背景色
+            border = BorderFactory.createEmptyBorder(2, 10, 2, 10)
+            preferredSize = Dimension(frame.width, 30)
             
             // 左侧歌曲信息
             titleArtistLabel = JLabel("", SwingConstants.LEFT).apply {
                 foreground = Color.WHITE
-                font = Font("微软雅黑", Font.PLAIN, 12) // 减小字体大小
+                font = Font("微软雅黑", Font.PLAIN, 12)
             }
             
             // 中间控制按钮
@@ -327,29 +334,17 @@ object DesktopLyrics {
                 isOpaque = false
                 
                 // 添加上一曲按钮
-                val prevButton = JButton("◀").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 12) // 减小字体大小
-                    foreground = Color.WHITE
-                    background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(3, 8, 3, 8) // 减小内边距
+                val prevButton = createControlButton("◀").apply {
                     addActionListener { sendMediaCommand("/api/previous-track") }
                 }
                 
                 // 添加播放/暂停按钮
-                playPauseButton = JButton("▶").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 12) // 减小字体大小
-                    foreground = Color.WHITE
-                    background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(3, 8, 3, 8) // 减小内边距
+                playPauseButton = createControlButton("▶").apply {
                     addActionListener { sendMediaCommand("/api/play-pause") }
                 }
                 
                 // 添加下一曲按钮
-                val nextButton = JButton("▶").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 12) // 减小字体大小
-                    foreground = Color.WHITE
-                    background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(3, 8, 3, 8) // 减小内边距
+                val nextButton = createControlButton("▶").apply {
                     addActionListener { sendMediaCommand("/api/next-track") }
                 }
                 
@@ -364,30 +359,20 @@ object DesktopLyrics {
                 isOpaque = false
                 
                 // 锁定按钮
-                lockButton = JButton("🔒").apply {
-                    font = Font("Segoe UI Symbol", Font.PLAIN, 12) // 减小字体大小
-                    foreground = Color.WHITE
-                    background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(3, 6, 3, 6) // 减小内边距
+                lockButton = createControlButton("🔒").apply {
                     addActionListener { toggleLock() }
                 }
                 
                 // 设置按钮
-                settingsButton = JButton("⚙").apply {
-                    font = Font("Segoe UI Symbol", Font.PLAIN, 12) // 减小字体大小
-                    foreground = Color.WHITE
-                    background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(3, 6, 3, 6) // 减小内边距
+                settingsButton = createControlButton("⚙").apply {
                     addActionListener { showSettingsDialog() }
                 }
                 
-                // 最小化按钮
-                minimizeButton = JButton("−").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 14) // 减小字体大小
-                    foreground = Color.WHITE
-                    background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(3, 6, 3, 6) // 减小内边距
-                    addActionListener { frame.isVisible = false }
+                // 最小化按钮 - 修复最小化功能
+                minimizeButton = createControlButton("−").apply {
+                    addActionListener { 
+                        frame.extendedState = Frame.ICONIFIED // 正确的最小化方式
+                    }
                 }
                 
                 add(lockButton)
@@ -398,6 +383,30 @@ object DesktopLyrics {
             add(titleArtistLabel, BorderLayout.WEST)
             add(controlPanel, BorderLayout.CENTER)
             add(rightPanel, BorderLayout.EAST)
+        }
+    }
+    
+    // 创建统一风格的控制按钮
+    private fun createControlButton(text: String): JButton {
+        return JButton(text).apply {
+            font = Font("Segoe UI Symbol", Font.BOLD, 12)
+            foreground = Color.WHITE
+            background = Color(60, 60, 60, 200) // 更明显的背景色
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color(150, 150, 150, 150), 1),
+                BorderFactory.createEmptyBorder(3, 8, 3, 8)
+            )
+            isContentAreaFilled = true
+            isFocusPainted = false
+            // 添加鼠标悬停效果
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseEntered(e: MouseEvent) {
+                    background = Color(80, 80, 80, 220)
+                }
+                override fun mouseExited(e: MouseEvent) {
+                    background = Color(60, 60, 60, 200)
+                }
+            })
         }
     }
     
@@ -1388,5 +1397,3 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
-
-
