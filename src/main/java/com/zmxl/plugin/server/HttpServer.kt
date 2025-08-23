@@ -225,7 +225,7 @@ class HttpServer(private val port: Int) {
      */
     class VolumeUpServlet : HttpServlet() {
         @Throws(IOException::class)
-        override doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
             
             try {
@@ -954,3 +954,4 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
