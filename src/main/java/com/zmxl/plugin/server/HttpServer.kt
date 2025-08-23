@@ -408,10 +408,10 @@ class Lyric163Servlet : HttpServlet() {
             
             if (songs.length() > 0) {
                 // 获取第一首歌曲的ID
-                val songId = songs.getJSONObject(0).getInt("id")
+                val songId163 = songs.getJSONObject(0).getInt("id")
                 
                 // 使用网易云音乐官方歌词API
-                val lyricUrl = "https://music.163.com/api/song/lyric?id=$songId&lv=1"
+                val lyricUrl = "https://music.163.com/api/song/lyric?id=$songId163&lv=1"
                 val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                     "Referer" to "https://music.163.com/"
@@ -513,7 +513,7 @@ class LyricQQServlet : HttpServlet() {
             // 执行搜索请求
             val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                "Referer" to "https://y.qq.com/portal/player.html"
+                "Referer" to "https://y.qq.com"
             ))
             
             val searchJson = JSONObject(searchResult)
@@ -536,10 +536,10 @@ class LyricQQServlet : HttpServlet() {
                 
                 if (fParts.size > 0) {
                     // 获取歌曲ID（songmid）
-                    val songId = fParts[0]
+                    val songIdqq = fParts[0]
                     
                     // 使用QQ音乐歌词API
-                    val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?format=json&nobase64=1&songmid=$songId"
+                    val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?format=json&nobase64=1&songmid=$songIdqq"
                     val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                         "Referer" to "https://y.qq.com/portal/player.html"
@@ -727,4 +727,5 @@ class LyricQQServlet : HttpServlet() {
         }
     }
 }
+
 
