@@ -1,6 +1,9 @@
 package com.zmxl.plugin.lyrics
 
 import com.google.gson.Gson
+import com.sun.jna.Native
+import com.sun.jna.Structure
+import com.sun.jna.platform.win32.WinDef
 import java.awt.*
 import java.awt.event.*
 import java.awt.image.BufferedImage
@@ -18,7 +21,7 @@ object DesktopLyrics {
     private var isDragging = false
     private var dragStart: Point? = null
     
-    private val timer = Timer(10) { updateLyrics() } // 缩短更新间隔至10ms
+    private val timer = Timer(10) { updateLyrics() }
     private val gson = Gson()
     
     private var currentSongId = ""
@@ -30,14 +33,137 @@ object DesktopLyrics {
     private var japaneseFont = Font("MS Gothic", Font.BOLD, 24)
     private var englishFont = Font("Arial", Font.BOLD, 24)
     
+    // 新增设置选项
+    private var isLocked = false
+    private var titleArtistFormat = 0 // 0: 歌名-歌手, 1: 歌手-歌名
+    
+    // 控制按钮面板
+    private lateinit var controlPanel: JPanel
+    private lateinit var playPauseButton: JButton
+    private lateinit var titleArtistLabel: JLabel
+    private lateinit var lockButton: JButton
+    private lateinit var settingsButton: JButton
+    private lateinit var minimizeButton: JButton
+    
+    // 毛玻璃效果相关
+    private var backgroundAlpha = 0f
+    private val backgroundTimer = Timer(16) {
+        val targetAlpha = if (frame.mousePosition != null && !isLocked) 0.9f else 0f
+        backgroundAlpha += (targetAlpha - backgroundAlpha) * 0.15f // 更平滑的过渡
+        
+        if (backgroundAlpha < 0.01f) {
+            // 完全透明时禁用毛玻璃效果
+            disableAcrylicEffect()
+        } else {
+            // 启用毛玻璃效果
+            enableAcrylicEffect((backgroundAlpha * 255).roundToInt())
+        }
+        
+        frame.repaint()
+    }
+    
+    // JNA接口定义
+    interface User32Ex : com.sun.jna.platform.win32.User32 {
+        fun SetWindowCompositionAttribute(hWnd: WinDef.HWND, data: WindowCompositionAttributeData): Boolean
+        
+        companion object {
+            val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java) as User32Ex
+        }
+    }
+    
+    // Windows API常量
+    private val ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
+    private val WCA_ACCENT_POLICY = 19
+    
+    // JNA结构体定义
+    @Structure.FieldOrder("AccentState", "AccentFlags", "GradientColor", "AnimationId")
+    class AccentPolicy : Structure() {
+        @JvmField var AccentState: Int = 0
+        @JvmField var AccentFlags: Int = 0
+        @JvmField var GradientColor: Int = 0
+        @JvmField var AnimationId: Int = 0
+    }
+    
+    @Structure.FieldOrder("Attribute", "Data", "SizeOfData")
+    class WindowCompositionAttributeData : Structure() {
+        @JvmField var Attribute: Int = 0
+        @JvmField var Data: com.sun.jna.Pointer? = null
+        @JvmField var SizeOfData: Int = 0
+    }
+    
     fun start() {
         setupUI()
         timer.start()
+        backgroundTimer.start()
     }
     
     fun stop() {
         timer.stop()
+        backgroundTimer.stop()
+        disableAcrylicEffect()
         frame.dispose()
+    }
+    
+    // 启用Windows毛玻璃效果
+    private fun enableAcrylicEffect(alpha: Int) {
+        try {
+            // 使用反射获取窗口句柄
+            val awtWindow = frame
+            val toolkit = Toolkit.getDefaultToolkit()
+            val getWindowMethod = toolkit.javaClass.getDeclaredMethod("getWindow", Window::class.java)
+            getWindowMethod.isAccessible = true
+            val window = getWindowMethod.invoke(toolkit, awtWindow)
+            val getWindowHandleMethod = window.javaClass.getDeclaredMethod("getWindowHandle")
+            getWindowHandleMethod.isAccessible = true
+            val handle = getWindowHandleMethod.invoke(window) as Long
+            
+            val hwnd = WinDef.HWND(com.sun.jna.Pointer.createConstant(handle))
+            val accent = AccentPolicy()
+            accent.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND
+            accent.AccentFlags = 2 // 启用窗口边框颜色
+            accent.GradientColor = (alpha shl 24) or 0x000000 // ARGB格式，A=alpha, RGB=黑色
+            
+            val data = WindowCompositionAttributeData()
+            data.Attribute = WCA_ACCENT_POLICY
+            data.Data = accent.pointer
+            data.SizeOfData = accent.size()
+            
+            User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
+        } catch (e: Exception) {
+            println("启用毛玻璃效果失败: ${e.message}")
+            // 备用方案：使用半透明背景
+            frame.background = Color(0, 0, 0, (alpha / 255f * 180).roundToInt())
+        }
+    }
+    
+    // 禁用毛玻璃效果
+    private fun disableAcrylicEffect() {
+        try {
+            // 使用反射获取窗口句柄
+            val awtWindow = frame
+            val toolkit = Toolkit.getDefaultToolkit()
+            val getWindowMethod = toolkit.javaClass.getDeclaredMethod("getWindow", Window::class.java)
+            getWindowMethod.isAccessible = true
+            val window = getWindowMethod.invoke(toolkit, awtWindow)
+            val getWindowHandleMethod = window.javaClass.getDeclaredMethod("getWindowHandle")
+            getWindowHandleMethod.isAccessible = true
+            val handle = getWindowHandleMethod.invoke(window) as Long
+            
+            val hwnd = WinDef.HWND(com.sun.jna.Pointer.createConstant(handle))
+            val accent = AccentPolicy()
+            accent.AccentState = 0 // 禁用特效
+            
+            val data = WindowCompositionAttributeData()
+            data.Attribute = WCA_ACCENT_POLICY
+            data.Data = accent.pointer
+            data.SizeOfData = accent.size()
+            
+            User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
+        } catch (e: Exception) {
+            println("禁用毛玻璃效果失败: ${e.message}")
+            // 备用方案：恢复透明背景
+            frame.background = Color(0, 0, 0, 0)
+        }
     }
     
     private fun setupUI() {
@@ -47,51 +173,17 @@ object DesktopLyrics {
             background = Color(0, 0, 0, 0)
             setAlwaysOnTop(true)
             
-            contentPane.apply {
-                layout = BorderLayout()
-                background = Color(0, 0, 0, 150)
-                add(lyricsPanel, BorderLayout.CENTER)
-            }
-            
-            // 添加控制按钮面板
-            val controlPanel = JPanel(FlowLayout(FlowLayout.CENTER, 10, 5)).apply {
-                background = Color(0, 0, 0, 100)
+            // 创建内容面板
+            contentPane = JPanel(BorderLayout()).apply {
+                background = Color(0, 0, 0, 0)
                 isOpaque = false
                 
-                // 使用Unicode字符避免乱码
-                // 添加上一曲按钮
-                val prevButton = JButton("◀").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
-                    foreground = Color.WHITE
-                    background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
-                    addActionListener { sendMediaCommand("/api/previous-track") }
-                }
+                // 添加歌词面板
+                add(lyricsPanel, BorderLayout.CENTER)
                 
-                // 添加播放/暂停按钮
-                val playPauseButton = JButton("▶").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
-                    foreground = Color.WHITE
-                    background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
-                    addActionListener { sendMediaCommand("/api/play-pause") }
-                }
-                
-                // 添加下一曲按钮
-                val nextButton = JButton("▶").apply {
-                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
-                    foreground = Color.WHITE
-                    background = Color(0, 0, 0, 100)
-                    border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
-                    addActionListener { sendMediaCommand("/api/next-track") }
-                }
-                
-                add(prevButton)
-                add(playPauseButton)
-                add(nextButton)
+                // 添加顶部控制栏
+                add(createTopControlBar(), BorderLayout.NORTH)
             }
-            
-            add(controlPanel, BorderLayout.SOUTH)
             
             // 设置窗口大小和位置
             setSize(800, 180)
@@ -103,26 +195,51 @@ object DesktopLyrics {
             // 添加鼠标事件监听器
             addMouseListener(object : MouseAdapter() {
                 override fun mousePressed(e: MouseEvent) {
-                    isDragging = true
-                    dragStart = e.point
-                    frame.cursor = Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
+                    if (!isLocked) {
+                        isDragging = true
+                        dragStart = e.point
+                        frame.cursor = Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
+                    }
                 }
                 
                 override fun mouseReleased(e: MouseEvent) {
-                    isDragging = false
-                    frame.cursor = Cursor.getDefaultCursor()
+                    if (!isLocked) {
+                        isDragging = false
+                        frame.cursor = Cursor.getDefaultCursor()
+                    }
                 }
                 
                 override fun mouseClicked(e: MouseEvent) {
-                    if (e.clickCount == 2) {
+                    if (e.clickCount == 2 && !isLocked) {
                         lyricsPanel.toggleTransparency()
+                    }
+                }
+                
+                override fun mouseEntered(e: MouseEvent) {
+                    if (!isLocked) {
+                        controlPanel.isVisible = true
+                        titleArtistLabel.isVisible = true
+                    }
+                }
+                
+                override fun mouseExited(e: MouseEvent) {
+                    if (!isLocked) {
+                        // 只有当鼠标不在控制面板上时才隐藏
+                        val point = MouseInfo.getPointerInfo().location
+                        val panelBounds = controlPanel.bounds
+                        panelBounds.location = controlPanel.locationOnScreen
+                        
+                        if (!panelBounds.contains(point)) {
+                            controlPanel.isVisible = false
+                            titleArtistLabel.isVisible = false
+                        }
                     }
                 }
             })
             
             addMouseMotionListener(object : MouseMotionAdapter() {
                 override fun mouseDragged(e: MouseEvent) {
-                    if (isDragging && dragStart != null) {
+                    if (!isLocked && isDragging && dragStart != null) {
                         val currentLocation = location
                         setLocation(
                             currentLocation.x + e.x - dragStart!!.x,
@@ -137,8 +254,132 @@ object DesktopLyrics {
                 setupSystemTray()
             }
             
+            // 初始状态隐藏控制面板
+            controlPanel.isVisible = false
+            titleArtistLabel.isVisible = false
+            
             isVisible = true
         }
+    }
+    
+    private fun createTopControlBar(): JPanel {
+        return JPanel(BorderLayout()).apply {
+            background = Color(0, 0, 0, 0)
+            isOpaque = false
+            border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
+            preferredSize = Dimension(frame.width, 40)
+            
+            // 左侧歌曲信息
+            titleArtistLabel = JLabel("", SwingConstants.LEFT).apply {
+                foreground = Color.WHITE
+                font = Font("微软雅黑", Font.PLAIN, 14)
+            }
+            
+            // 中间控制按钮
+            controlPanel = JPanel(FlowLayout(FlowLayout.CENTER, 5, 0)).apply {
+                background = Color(0, 0, 0, 0)
+                isOpaque = false
+                
+                // 添加上一曲按钮
+                val prevButton = JButton("◀").apply {
+                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
+                    foreground = Color.WHITE
+                    background = Color(0, 0, 0, 100)
+                    border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
+                    addActionListener { sendMediaCommand("/api/previous-track") }
+                }
+                
+                // 添加播放/暂停按钮
+                playPauseButton = JButton("▶").apply {
+                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
+                    foreground = Color.WHITE
+                    background = Color(0, 0, 0, 100)
+                    border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
+                    addActionListener { sendMediaCommand("/api/play-pause") }
+                }
+                
+                // 添加下一曲按钮
+                val nextButton = JButton("▶").apply {
+                    font = Font("Segoe UI Symbol", Font.BOLD, 14)
+                    foreground = Color.WHITE
+                    background = Color(0, 0, 0, 100)
+                    border = BorderFactory.createEmptyRect(5, 10, 5, 10)
+                    addActionListener { sendMediaCommand("/api/next-track") }
+                }
+                
+                add(prevButton)
+                add(playPauseButton)
+                add(nextButton)
+            }
+            
+            // 右侧功能按钮
+            val rightPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 5, 0)).apply {
+                background = Color(0, 0, 0, 0)
+                isOpaque = false
+                
+                // 锁定按钮
+                lockButton = JButton("🔒").apply {
+                    font = Font("Segoe UI Symbol", Font.PLAIN, 14)
+                    foreground = Color.WHITE
+                    background = Color(0, 0, 0, 100)
+                    border = BorderFactory.createEmptyBorder(5, 8, 5, 8)
+                    addActionListener { toggleLock() }
+                }
+                
+                // 设置按钮
+                settingsButton = JButton("⚙").apply {
+                    font = Font("Segoe UI Symbol", Font.PLAIN, 14)
+                    foreground = Color.WHITE
+                    background = Color(0, 0, 0, 100)
+                    border = BorderFactory.createEmptyBorder(5, 8, 5, 8)
+                    addActionListener { showSettingsDialog() }
+                }
+                
+                // 最小化按钮
+                minimizeButton = JButton("−").apply {
+                    font = Font("Segoe UI Symbol", Font.BOLD, 16)
+                    foreground = Color.WHITE
+                    background = Color(0, 0, 0, 100)
+                    border = BorderFactory.createEmptyBorder(5, 8, 5, 8)
+                    addActionListener { frame.isVisible = false }
+                }
+                
+                add(lockButton)
+                add(settingsButton)
+                add(minimizeButton)
+            }
+            
+            add(titleArtistLabel, BorderLayout.WEST)
+            add(controlPanel, BorderLayout.CENTER)
+            add(rightPanel, BorderLayout.EAST)
+        }
+    }
+    
+    private fun toggleLock() {
+        isLocked = !isLocked
+        
+        if (isLocked) {
+            lockButton.text = "🔒"
+            controlPanel.isVisible = false
+            titleArtistLabel.isVisible = false
+            disableAcrylicEffect()
+        } else {
+            lockButton.text = "🔓"
+            // 解锁后，如果鼠标在窗口内，启用毛玻璃效果
+            if (frame.mousePosition != null) {
+                enableAcrylicEffect(200)
+            }
+        }
+    }
+    
+    private fun updateTitleArtistDisplay(title: String, artist: String) {
+        val displayText = if (titleArtistFormat == 0) {
+            "$title - $artist"
+        } else {
+            "$artist - $title"
+        }
+        
+        titleArtistLabel.text = displayText
     }
     
     private fun setupKeyboardShortcuts() {
@@ -189,8 +430,16 @@ object DesktopLyrics {
         val image = createTrayIconImage()
         val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
         
-        // 使用系统默认字体，避免乱码
+        // 使用中文菜单项
         val popup = PopupMenu()
+        
+        // 添加显示/隐藏菜单
+        val toggleItem = MenuItem("显示/隐藏")
+        toggleItem.addActionListener { frame.isVisible = !frame.isVisible }
+        
+        // 添加锁定/解锁菜单
+        val lockItem = MenuItem(if (isLocked) "解锁" else "锁定")
+        lockItem.addActionListener { toggleLock() }
         
         // 添加设置菜单
         val settingsItem = MenuItem("设置")
@@ -200,9 +449,18 @@ object DesktopLyrics {
         val exitItem = MenuItem("退出")
         exitItem.addActionListener { exitApplication() }
         
+        popup.add(toggleItem)
+        popup.add(lockItem)
         popup.add(settingsItem)
         popup.addSeparator()
         popup.add(exitItem)
+        
+        // 设置菜单项字体（避免乱码）
+        val font = Font("微软雅黑", Font.PLAIN, 12)
+        for (i in 0 until popup.itemCount) {
+            val item = popup.getItem(i)
+            item.font = font
+        }
         
         trayIcon.popupMenu = popup
         trayIcon.addActionListener { frame.isVisible = !frame.isVisible }
@@ -220,24 +478,78 @@ object DesktopLyrics {
         dialog.setSize(500, 500)
         dialog.setLocationRelativeTo(frame)
         
-        val tabbedPane = JTabbedPane().apply {
+        // 使用现代化外观
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        
+        val tabbedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
             border = EmptyBorder(10, 10, 10, 10)
+            background = Color(240, 240, 240)
+            font = Font("微软雅黑", Font.PLAIN, 12)
         }
         
         // 字体设置面板
-        val fontPanel = JPanel(GridBagLayout()).apply {
-            border = EmptyBorder(10, 10, 10, 10)
+        val fontPanel = createFontPanel(dialog)
+        
+        // 颜色设置面板
+        val colorPanel = createColorPanel(dialog)
+        
+        // 其他设置面板
+        val otherPanel = createOtherPanel(dialog)
+        
+        tabbedPane.addTab("字体", fontPanel)
+        tabbedPane.addTab("颜色", colorPanel)
+        tabbedPane.addTab("其他", otherPanel)
+        
+        dialog.add(tabbedPane, BorderLayout.CENTER)
+        
+        // 添加关闭按钮
+        val closeButton = JButton("关闭").apply {
+            font = Font("微软雅黑", Font.BOLD, 12)
+            background = Color(192, 57, 43)
+            foreground = Color.WHITE
+            border = EmptyBorder(8, 20, 8, 20)
+            addActionListener { dialog.dispose() }
+        }
+        
+        val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
             background = Color(240, 240, 240)
+            border = EmptyBorder(10, 10, 10, 10)
+            add(closeButton)
+        }
+        
+        dialog.add(buttonPanel, BorderLayout.SOUTH)
+        dialog.isVisible = true
+    }
+    
+    private fun createFontPanel(dialog: JDialog): JPanel {
+        return JPanel(GridBagLayout()).apply {
+            border = EmptyBorder(15, 15, 15, 15)
+            background = Color.WHITE
             
             val gbc = GridBagConstraints().apply {
-                insets = Insets(5, 5, 5, 5)
+                insets = Insets(8, 8, 8, 8)
                 anchor = GridBagConstraints.WEST
                 fill = GridBagConstraints.HORIZONTAL
             }
             
-            // 中文字体选择
+            // 标题
             gbc.gridx = 0
             gbc.gridy = 0
+            gbc.gridwidth = 2
+            add(JLabel("字体设置").apply { 
+                font = Font("微软雅黑", Font.BOLD, 16)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridwidth = 1
+            gbc.gridy++
+            
+            // 中文字体选择
+            gbc.gridx = 0
             add(JLabel("中文字体:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
@@ -249,12 +561,15 @@ object DesktopLyrics {
                 selectedItem = chineseFont.family
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
             }
             add(chineseFontCombo, gbc)
             
             // 日文字体选择
             gbc.gridx = 0
-            gbc.gridy = 1
+            gbc.gridy++
             add(JLabel("日文字体:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
@@ -266,12 +581,15 @@ object DesktopLyrics {
                 selectedItem = japaneseFont.family
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
             }
             add(japaneseFontCombo, gbc)
             
             // 英文字体选择
             gbc.gridx = 0
-            gbc.gridy = 2
+            gbc.gridy++
             add(JLabel("英文字体:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
@@ -283,15 +601,18 @@ object DesktopLyrics {
                 selectedItem = englishFont.family
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
             }
             add(englishFontCombo, gbc)
             
             // 字体大小
             gbc.gridx = 0
-            gbc.gridy = 3
+            gbc.gridy++
             add(JLabel("字体大小:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
-                foreground = Color(60, 60, 60)
+                foreground = Color(60, 60, 极光
             }, gbc)
             
             gbc.gridx = 1
@@ -302,7 +623,7 @@ object DesktopLyrics {
             
             // 字体样式
             gbc.gridx = 0
-            gbc.gridy = 4
+            gbc.gridy++
             add(JLabel("字体样式:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
@@ -317,12 +638,15 @@ object DesktopLyrics {
                 }
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
             }
             add(styleCombo, gbc)
             
             // 应用按钮
             gbc.gridx = 0
-            gbc.gridy = 5
+            gbc.gridy++
             gbc.gridwidth = 2
             gbc.anchor = GridBagConstraints.CENTER
             val applyButton = JButton("应用字体设置").apply {
@@ -350,65 +674,33 @@ object DesktopLyrics {
             }
             add(applyButton, gbc)
         }
-        
-        // 颜色设置面板
-        val colorPanel = JPanel(GridBagLayout()).apply {
-            border = EmptyBorder(10, 10, 10, 10)
-            background = Color(240, 240, 240)
+    }
+    
+    private fun createColorPanel(dialog: JDialog): JPanel {
+        return JPanel(GridBagLayout()).apply {
+            border = EmptyBorder(15, 15, 15, 15)
+            background = Color.WHITE
             
             val gbc = GridBagConstraints().apply {
-                insets = Insets(5, 5, 5, 5)
+                insets = Insets(8, 8, 8, 8)
                 anchor = GridBagConstraints.WEST
                 fill = GridBagConstraints.HORIZONTAL
             }
             
-            // 标题颜色
+            // 标题
             gbc.gridx = 0
             gbc.gridy = 0
-            add(JLabel("标题颜色:").apply { 
-                font = Font("微软雅黑", Font.PLAIN, 12)
+            gbc.gridwidth = 2
+            add(JLabel("颜色设置").apply { 
+                font = Font("微软雅黑", Font.BOLD, 极光
                 foreground = Color(60, 60, 60)
             }, gbc)
             
-            gbc.gridx = 1
-            val titleColorButton = JButton().apply {
-                background = lyricsPanel.titleColor
-                preferredSize = Dimension(80, 25)
-                addActionListener { 
-                    val color = JColorChooser.showDialog(dialog, "选择标题颜色", background)
-                    if (color != null) {
-                        background = color
-                        lyricsPanel.titleColor = color
-                    }
-                }
-            }
-            add(titleColorButton, gbc)
-            
-            // 艺术家颜色
-            gbc.gridx = 0
-            gbc.gridy = 1
-            add(JLabel("艺术家颜色:").apply { 
-                font = Font("微软雅黑", Font.PLAIN, 12)
-                foreground = Color(60, 60, 60)
-            }, gbc)
-            
-            gbc.gridx = 1
-            val artistColorButton = JButton().apply {
-                background = lyricsPanel.artistColor
-                preferredSize = Dimension(80, 25)
-                addActionListener { 
-                    val color = JColorChooser.showDialog(dialog, "选择艺术家颜色", background)
-                    if (color != null) {
-                        background = color
-                        lyricsPanel.artistColor = color
-                    }
-                }
-            }
-            add(artistColorButton, gbc)
+            gbc.gridwidth = 1
+            gbc.gridy++
             
             // 歌词颜色
-            gbc.gridx = 0
-            gbc.gridy = 2
+            gbc.gridx = 极
             add(JLabel("歌词颜色:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
@@ -430,9 +722,9 @@ object DesktopLyrics {
             
             // 高亮歌词颜色
             gbc.gridx = 0
-            gbc.gridy = 3
+            gbc.gridy++
             add(JLabel("高亮歌词颜色:").apply { 
-                font = Font("微软雅黑", Font.PLAIN, 12)
+                font = Font("极微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
             }, gbc)
             
@@ -449,22 +741,60 @@ object DesktopLyrics {
                 }
             }
             add(highlightColorButton, gbc)
+            
+            // 背景颜色
+            gbc.gridx = 0
+            gbc.gridy++
+            add(J极Label("背景颜色:").apply { 
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val bgColorButton = JButton().apply {
+                background = lyricsPanel.backgroundColor
+                preferredSize = Dimension(80, 25)
+                addActionListener { 
+                    val color = JColorChooser.showDialog(dialog, "选择背景颜色", background)
+                    if (color != null) {
+                        background = color
+                        lyricsPanel.backgroundColor = color
+                        lyricsPanel.background = Color(
+                            color.red, color.green, color.blue, 
+                            (255 * lyricsPanel.transparency).roundToInt()
+                        )
+                    }
+                }
+            }
+            add(b极ColorButton, gbc)
         }
-        
-        // 其他设置面板
-        val otherPanel = JPanel(GridBagLayout()).apply {
-            border = EmptyBorder(10, 10, 10, 10)
-            background = Color(240, 240, 240)
+    }
+    
+    private fun createOtherPanel(dialog: JDialog): JPanel {
+        return JPanel(GridBagLayout()).apply {
+            border = EmptyBorder(15, 15, 15, 15)
+            background = Color.WHITE
             
             val gbc = GridBagConstraints().apply {
-                insets = Insets(5, 5, 5, 5)
+                insets = Insets(8, 8, 8, 8)
                 anchor = GridBagConstraints.WEST
-                fill = GridBagConstraints.HORIZONTAL
+                fill =极GridBagConstraints.HORIZONTAL
             }
+            
+            // 标题
+            gbc.gridx = 0
+            gbc.gridy = 0
+            gbc.gridwidth = 2
+            add(JLabel("其他设置").apply { 
+                font = Font("微软雅黑", Font.BOLD, 16)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridwidth = 1
+            gbc.gridy++
             
             // 透明度设置
             gbc.gridx = 0
-            gbc.gridy = 0
             add(JLabel("窗口透明度:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
@@ -474,7 +804,8 @@ object DesktopLyrics {
             val transparencySlider = JSlider(10, 100, (lyricsPanel.transparency * 100).toInt()).apply {
                 addChangeListener {
                     lyricsPanel.transparency = value / 100f
-                    lyricsPanel.background = Color(0, 0, 0, (255 * lyricsPanel.transparency).roundToInt())
+                    val bg = lyricsPanel.backgroundColor
+                    lyricsPanel.background = Color(bg.red, bg.green, bg.blue, (255 * lyricsPanel.transparency).roundToInt())
                     lyricsPanel.repaint()
                 }
             }
@@ -482,14 +813,14 @@ object DesktopLyrics {
             
             // 动画速度设置
             gbc.gridx = 0
-            gbc.gridy = 1
+            gbc.gridy++
             add(JLabel("动画速度:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
             }, gbc)
             
             gbc.gridx = 1
-            val animationSlider = JSlider(1, 20, lyricsPanel.animationSpeed).apply {
+           极 val animationSlider = JSlider(1, 20, lyricsPanel.animationSpeed).apply {
                 addChangeListener {
                     lyricsPanel.animationSpeed = value
                 }
@@ -498,7 +829,7 @@ object DesktopLyrics {
             
             // 歌词对齐方式
             gbc.gridx = 0
-            gbc.gridy = 2
+            gbc.gridy++
             add(JLabel("歌词对齐:").apply { 
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 foreground = Color(60, 60, 60)
@@ -513,6 +844,9 @@ object DesktopLyrics {
                 }
                 font = Font("微软雅黑", Font.PLAIN, 12)
                 background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
                 addActionListener {
                     lyricsPanel.alignment = when (selectedIndex) {
                         1 -> LyricsPanel.Alignment.LEFT
@@ -522,31 +856,51 @@ object DesktopLyrics {
                 }
             }
             add(alignmentCombo, gbc)
+            
+            // 标题-艺术家显示格式
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("标题-艺术家格式:").apply { 
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val formatCombo = J极ComboBox(arrayOf("歌名 - 歌手", "歌手 - 歌名")).apply {
+                selectedIndex = titleArtistFormat
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                background = Color.W极ITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
+                addActionListener {
+                    titleArtistFormat = selectedIndex
+                    val nowPlaying = getNowPlaying()
+                    if (nowPlaying != null) {
+                        updateTitleArtistDisplay(nowPlaying.title ?: "", nowPlaying.artist ?: "")
+                    }
+                }
+            }
+            add(formatCombo, gbc)
+            
+            // 文本阴影效果
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("文字阴影极效果:").apply { 
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val shadowCheckBox = JCheckBox("启用", lyricsPanel.useShadow).apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                addActionListener {
+                    lyrics极Panel.useShadow = isSelected
+                    lyricsPanel.repaint()
+                }
+            }
+            add(shadowCheckBox, gbc)
         }
-        
-        tabbedPane.addTab("字体", fontPanel)
-        tabbedPane.addTab("颜色", colorPanel)
-        tabbedPane.addTab("其他", otherPanel)
-        
-        dialog.add(tabbedPane, BorderLayout.CENTER)
-        
-        // 添加关闭按钮
-        val closeButton = JButton("关闭").apply {
-            font = Font("微软雅黑", Font.BOLD, 12)
-            background = Color(192, 57, 43)
-            foreground = Color.WHITE
-            border = EmptyBorder(8, 20, 8, 20)
-            addActionListener { dialog.dispose() }
-        }
-        
-        val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
-            background = Color(240, 240, 240)
-            border = EmptyBorder(10, 10, 10, 10)
-            add(closeButton)
-        }
-        
-        dialog.add(buttonPanel, BorderLayout.SOUTH)
-        dialog.isVisible = true
     }
     
     private fun createTrayIconImage(): Image {
@@ -569,8 +923,14 @@ object DesktopLyrics {
                 return
             }
             
+            // 更新播放/暂停按钮图标
+            playPauseButton.text = if (nowPlaying.isPlaying) "❚❚" else "▶"
+            
+            // 更新标题-艺术家显示
+            updateTitleArtistDisplay(nowPlaying.title ?: "", nowPlaying.artist ?: "")
+            
             // 检查歌曲是否变化
-            val newSongId = "${nowPlaying.title}-${nowPlaying.artist}-${nowPlaying.album}"
+            val newSong极Id = "${nowPlaying.title}-${nowPlaying.artist}-${nowPlaying.album}"
             val songChanged = newSongId != currentSongId
             
             if (songChanged) {
@@ -612,7 +972,7 @@ object DesktopLyrics {
             if (conn.responseCode != 200) return null
             
             val reader = BufferedReader(InputStreamReader(conn.inputStream))
-            val response = reader.readText()
+           极 val response = reader.readText()
             reader.close()
             
             return gson.fromJson(response, NowPlaying::class.java)
@@ -679,11 +1039,12 @@ class LyricsPanel : JPanel() {
     private var artist = ""
     private var position = 0L
     private var lyric = ""
-    var parsedLyrics = listOf<LyricLine>()
+    var parsedLyrics =极 listOf<LyricLine>()
     private var currentLineIndex = -1
     var transparency = 0.8f
     var animationSpeed = 10
     var alignment = Alignment.CENTER
+    var useShadow = true // 是否使用文字阴影
     
     // 字体设置
     private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
@@ -691,10 +1052,9 @@ class LyricsPanel : JPanel() {
     private var englishFont = Font("Arial", Font.BOLD, 24)
     
     // 颜色设置
-    var titleColor = Color.WHITE
-    var artistColor = Color.WHITE
     var lyricColor = Color.WHITE
     var highlightColor = Color(255, 215, 0) // 金色
+    var backgroundColor = Color(0, 0, 0, 0) // 背景颜色 - 完全透明
     
     // 动画状态
     private var animationProgress = 0f
@@ -706,15 +1066,15 @@ class LyricsPanel : JPanel() {
     private var smoothPosition = 0f
     private var targetPosition = 0f
     private var smoothAlpha = 0f
-    private var targetAlpha = 0f
+    private极 var targetAlpha = 0f
     
     enum class Alignment {
         LEFT, CENTER, RIGHT
     }
     
     init {
-        background = Color(0, 0, 0, (255 * transparency).roundToInt())
-        isOpaque = false
+        background = backgroundColor
+        isOpaque = false // 设置为不透明，使背景透明
         border = BorderFactory.createEmptyBorder(10, 20, 10, 20)
         
         // 动画定时器 - 使用更平滑的动画
@@ -726,11 +1086,11 @@ class LyricsPanel : JPanel() {
             // 歌词行切换动画
             animationProgress += 0.02f * animationSpeed * animationDirection
             
-            if (animationProgress >= 1f) {
+            if (animationProgress >= 1极f) {
                 animationProgress = 1f
                 animationDirection = 0
             } else if (animationProgress <= 0f) {
-                animationProgress = 0f
+                animationProgress = 0极f
                 animationDirection = 0
             }
             
@@ -749,7 +1109,7 @@ class LyricsPanel : JPanel() {
         return when {
             text.contains("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF]".toRegex()) -> {
                 // 包含中文或日文字符
-                if (text.contains("[\\u4E00-\\u9FFF]".toRegex())) chineseFont else japaneseFont
+                if (text.contains("[\\极u4E00-\\u9FFF]".toRegex())) chineseFont else japaneseFont
             }
             else -> englishFont // 英文或其他
         }
@@ -785,7 +1145,7 @@ class LyricsPanel : JPanel() {
         if (newIndex != currentLineIndex) {
             prevLineIndex = currentLineIndex
             nextLineIndex = newIndex
-            currentLineIndex = newIndex
+            currentLine极Index = newIndex
             animationProgress = 0f
             animationDirection = 1
             
@@ -798,12 +1158,13 @@ class LyricsPanel : JPanel() {
     }
     
     fun toggleTransparency() {
-        transparency = if (transparency < 0.5f) 0.8f else 0.3f
-        background = Color(0, 0, 0, (255 * transparency).roundToInt())
+        transparency = if (transparency < 0.5f) 0.8极f else 0.3f
+        val bg = backgroundColor
+        background = Color(bg.red, bg.green, bg.blue, (255 * transparency).roundToInt())
         repaint()
     }
     
-    private fun parseLyrics(lyricText: String?): List<LyricLine> {
+    private fun parseLyrics(lyricText: String?): List<LyricLine极> {
         if (lyricText.isNullOrEmpty()) return emptyList()
         
         val lines = mutableListOf<LyricLine>()
@@ -817,7 +1178,7 @@ class LyricsPanel : JPanel() {
             val seconds = sec.toLong()
             val millisValue = millis.toLongOrNull() ?: 0
             
-            // 计算总毫秒数
+            // 计算总毫秒极数
             val totalMillis = minutes * 60 * 1000 + seconds * 1000 + millisValue * 10
             
             if (text.isNotBlank()) {
@@ -859,21 +1220,10 @@ class LyricsPanel : JPanel() {
         
         // 设置抗锯齿
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+        g2极d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
         
-        // 绘制标题和艺术家
-        g2d.font = getFontForText(title)
-        g2d.color = titleColor
-        val titleX = getTextXPosition(g2d, title)
-        g2d.drawString(title, titleX, 30)
-        
-        g2d.font = getFontForText(artist)
-        g2d.color = artistColor
-        val artistX = getTextXPosition(g2d, artist)
-        g2d.drawString(artist, artistX, 50)
-        
-        // 绘制歌词
-        val yPos = height - 50
+        // 极绘制歌词
+        val yPos = height / 2 + 20
         
         if (parsedLyrics.isNotEmpty()) {
             // 绘制上一行歌词（淡出）
@@ -884,8 +1234,16 @@ class LyricsPanel : JPanel() {
                 g2d.color = color
                 g2d.font = getFontForText(parsedLyrics[prevLineIndex].text)
                 val prevLine = parsedLyrics[prevLineIndex].text
-                val prevX = getTextXPosition(g2d, prevLine)
-                val prevY = yPos - (40 * smoothAlpha).toInt()
+                val prevX = getText极XPosition(g2d, prevLine)
+                val prevY =极 yPos - (40 * smoothAlpha).toInt()
+                
+                // 使用阴影效果
+                if (useShadow) {
+                    g2d.color = Color(0, 0, 0, alpha / 2)
+                    g2d.drawString(prevLine, prevX + 1, prevY + 1)
+                }
+                
+                g2d.color = color
                 g2d.drawString(prevLine, prevX, prevY)
             }
             
@@ -899,6 +1257,14 @@ class LyricsPanel : JPanel() {
                 val currentLine = parsedLyrics[currentLineIndex].text
                 val currentX = getTextXPosition(g2d, currentLine)
                 val currentY = yPos - (20 * (1 - smoothAlpha)).toInt()
+                
+                // 使用阴影效果
+                if (useShadow) {
+                    g2d.color = Color(0, 0, 0, alpha / 2)
+                    g2d.drawString(currentLine, currentX + 1, current极Y + 1)
+                }
+                
+                g2d.color = color
                 g2d.drawString(currentLine, currentX, currentY)
             }
             
@@ -908,6 +1274,14 @@ class LyricsPanel : JPanel() {
                 g2d.font = getFontForText(parsedLyrics[currentLineIndex + 1].text)
                 val nextLine = parsedLyrics[currentLineIndex + 1].text
                 val nextX = getTextXPosition(g2d, nextLine)
+                
+                // 使用阴影效果
+                if (useShadow) {
+                    g2d.color = Color(0, 0, 0, 75)
+                    g2d.drawString(nextLine, nextX + 1, yPos + 40 + 1)
+                }
+                
+                g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
                 g2d.drawString(nextLine, nextX, yPos + 40)
             }
         } else if (lyric.isNotEmpty()) {
@@ -915,6 +1289,14 @@ class LyricsPanel : JPanel() {
             g2d.color = lyricColor
             g2d.font = getFontForText(lyric)
             val lyricX = getTextXPosition(g2d, lyric)
+            
+            // 使用阴影效果
+            if (useShadow) {
+                g2d.color = Color(0, 0, 0, 150)
+                g2d.drawString(lyric, lyricX + 1, yPos + 1)
+            }
+            
+            g2d.color = lyricColor
             g2d.drawString(lyric, lyricX, yPos)
         } else {
             // 没有歌词时的提示
@@ -922,6 +1304,14 @@ class LyricsPanel : JPanel() {
             g2d.font = chineseFont
             val message = "歌词加载中..."
             val messageX = getTextXPosition(g2d, message)
+            
+            // 使用阴影极效果
+            if (useShadow) {
+                g2d.color = Color(0, 0, 0, 150)
+                g2d.drawString(message, messageX + 1, yPos + 1)
+            }
+            
+            g2d.color = Color.LIGHT_GRAY
             g2d.drawString(message, messageX, yPos)
         }
     }
