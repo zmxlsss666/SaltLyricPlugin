@@ -406,7 +406,7 @@ class Lyric163Servlet : HttpServlet() {
                 return null
             }
             
-            val songs = result.getJSONObject("songs")
+            val songs = result.getJSONArray("songs")
             
             if (songs.length() > 0) {
                 // 获取第一首歌曲的ID
@@ -609,7 +609,7 @@ class LyricQQServlet : HttpServlet() {
         return null
     }
     
-    // 辅助方法：获取URL内容（带请求头）
+    // 辅助方法：获取URL内容（带请求头)
     private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
         val url = URL(urlString)
         val conn = url.openConnection() as HttpURLConnection
@@ -954,4 +954,3 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
-
