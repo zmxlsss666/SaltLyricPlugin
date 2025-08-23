@@ -1026,38 +1026,63 @@ object DesktopLyrics {
         }
     }
     
-    private fun getLyric(): String? {
-        try {
-            // 检查缓存
-            if (lastLyricUrl.isNotEmpty() && lyricCache.containsKey(lastLyricUrl)) {
-                return lyricCache[lastLyricUrl]
-            }
-            
-            val url = URL("http://localhost:35373/api/lyric")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 1000
-            
-            if (conn.responseCode != 200) return null
-            
-            val reader = BufferedReader(InputStreamReader(conn.inputStream))
-            val response = reader.readText()
-            reader.close()
-            
-            val lyricResponse = gson.fromJson(response, LyricResponse::class.java)
-            val lyric = lyricResponse.lyric
-            
-            // 更新缓存
-            if (lyric != null) {
-                lyricCache[lastLyricUrl] = lyric
-            }
-            
-            return lyric
-        } catch (e: Exception) {
-            return null
+   private fun getLyric(): String? {
+    try {
+        // 检查缓存
+        if (currentSongId.isNotEmpty() && lyricCache.containsKey(currentSongId)) {
+            return lyricCache[currentSongId]
         }
+        
+        // 按顺序尝试不同的歌词API
+        val endpoints = listOf(
+            "/api/lyric163",
+            "/api/lyricqq", 
+            "/api/lyrickugou",
+            "/api/lyricspw"
+        )
+        
+        for (endpoint in endpoints) {
+            try {
+                val url = URL("http://localhost:35373$endpoint")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 1000
+                
+                if (conn.responseCode == 404) {
+                    conn.disconnect()
+                    continue // 尝试下一个端点
+                }
+                
+                if (conn.responseCode != 200) {
+                    conn.disconnect()
+                    continue // 尝试下一个端点
+                }
+                
+                val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                val response = reader.readText()
+                reader.close()
+                
+                val lyricResponse = gson.fromJson(response, LyricResponse::class.java)
+                val lyric = lyricResponse.lyric
+                
+                // 更新缓存
+                if (lyric != null && currentSongId.isNotEmpty()) {
+                    lyricCache[currentSongId] = lyric
+                    return lyric
+                }
+                
+                conn.disconnect()
+            } catch (e: Exception) {
+                // 连接失败，继续尝试下一个端点
+                continue
+            }
+        }
+        
+        return null // 所有端点都失败
+    } catch (e: Exception) {
+        return null
     }
-    
+}
     private fun exitApplication() {
         stop()
     }
@@ -1363,4 +1388,5 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
 
