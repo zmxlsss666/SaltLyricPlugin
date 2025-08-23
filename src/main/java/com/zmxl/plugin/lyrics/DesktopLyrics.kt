@@ -180,7 +180,6 @@ object DesktopLyrics {
             
             // 关键修复：设置窗口不获取焦点，允许其他程序正常使用
             isFocusable = false
-            isFocusableWindowState = false
             focusableWindowState = false
             
             // 创建内容面板
@@ -1397,3 +1396,4 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
