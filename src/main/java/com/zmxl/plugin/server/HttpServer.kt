@@ -26,10 +26,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.jaudiotagger.audio.AudioFile
 import org.jaudiotagger.audio.AudioFileIO
-import org.jaudiotagger.audio.flac.FlacFile
-import org.jaudiotagger.audio.mp3.MP3File
-import org.jaudiotagger.audio.wav.WavFileReader
+import org.jaudiotagger.audio.AudioHeader
+import org.jaudiotagger.audio.exceptions.CannotReadException
+import org.jaudiotagger.audio.exceptions.InvalidAudioFrameException
+import org.jaudiotagger.audio.exceptions.ReadOnlyFileException
 import org.jaudiotagger.tag.FieldKey
+import org.jaudiotagger.tag.Tag
+import org.jaudiotagger.tag.TagException
+import org.jaudiotagger.tag.id3.ID3v1Tag
+import org.jaudiotagger.tag.id3.ID3v2Tag
 import org.jaudiotagger.tag.id3.framebody.FrameBodySYLT
 import org.jaudiotagger.tag.id3.framebody.FrameBodyUSLT
 
@@ -398,18 +403,31 @@ class HttpServer(private val port: Int) {
             }
             
             return try {
-                // 根据文件扩展名选择合适的读取器
-                val extension = getFileExtension(filePath).lowercase()
-                when (extension) {
-                    "mp3" -> readMp3Lyric(file)
-                    "flac" -> readFlacLyric(file)
-                    "wav" -> readWavLyric(file)
-                    "m4a", "aac" -> readM4aLyric(file)
-                    else -> {
-                        println("不支持的文件格式: $extension")
+                val audioFile = AudioFileIO.read(file)
+                val tag = audioFile.tag
+                
+                // 尝试从标签中获取歌词
+                tag?.getFirst(FieldKey.LYRICS) ?: run {
+                    // 对于MP3文件，尝试从ID3标签特定字段获取
+                    val extension = getFileExtension(filePath).lowercase()
+                    if (extension == "mp3") {
+                        readMp3SpecificLyrics(audioFile)
+                    } else {
                         null
                     }
                 }
+            } catch (e: CannotReadException) {
+                println("无法读取音频文件: ${e.message}")
+                null
+            } catch (e: TagException) {
+                println("标签解析错误: ${e.message}")
+                null
+            } catch (e: InvalidAudioFrameException) {
+                println("无效的音频帧: ${e.message}")
+                null
+            } catch (e: ReadOnlyFileException) {
+                println("文件只读: ${e.message}")
+                null
             } catch (e: Exception) {
                 println("读取音频文件歌词时出错: ${e.message}")
                 null
@@ -426,22 +444,20 @@ class HttpServer(private val port: Int) {
             }
         }
         
-        // 读取MP3文件中的歌词
-        private fun readMp3Lyric(file: File): String? {
-            val mp3File = MP3File(file)
-            
-            // 尝试从ID3v2标签获取歌词
-            val id3v2Tag = mp3File.id3v2Tag
+        // 读取MP3文件中的特定歌词字段
+        private fun readMp3SpecificLyrics(audioFile: AudioFile): String? {
+            // 尝试从ID3v2标签获取
+            val id3v2Tag = audioFile.tag as? ID3v2Tag
             if (id3v2Tag != null) {
                 // 尝试从非同步歌词帧获取
-                val usltFrames = id3v2Tag.getFramesOfType(FrameBodyUSLT.ID)
+                val usltFrames = id3v2Tag.getFrames(FrameBodyUSLT.ID)
                 if (usltFrames.isNotEmpty()) {
                     val usltFrame = usltFrames[0].body as FrameBodyUSLT
                     return usltFrame.lyrics
                 }
                 
                 // 尝试从同步歌词帧获取
-                val syltFrames = id3v2Tag.getFramesOfType(FrameBodySYLT.ID)
+                val syltFrames = id3v2Tag.getFrames(FrameBodySYLT.ID)
                 if (syltFrames.isNotEmpty()) {
                     val syltFrame = syltFrames[0].body as FrameBodySYLT
                     return syltFrame.text.joinToString("\n")
@@ -449,53 +465,9 @@ class HttpServer(private val port: Int) {
             }
             
             // 尝试从ID3v1标签获取
-            val id3v1Tag = mp3File.id3v1Tag
+            val id3v1Tag = audioFile.tag as? ID3v1Tag
             if (id3v1Tag != null && id3v1Tag.comment.isNotBlank()) {
                 return id3v1Tag.comment
-            }
-            
-            return null
-        }
-        
-        // 读取FLAC文件中的歌词
-        private fun readFlacLyric(file: File): String? {
-            val flacFile = FlacFile(file)
-            val tag = flacFile.tag ?: return null
-            
-            // 尝试从LYRICS字段获取歌词
-            if (tag.hasField(FieldKey.LYRICS)) {
-                return tag.getFirst(FieldKey.LYRICS)
-            }
-            
-            // 尝试从DESCRIPTION字段获取
-            if (tag.hasField(FieldKey.DESCRIPTION)) {
-                return tag.getFirst(FieldKey.DESCRIPTION)
-            }
-            
-            return null
-        }
-        
-        // 读取WAV文件中的歌词
-        private fun readWavLyric(file: File): String? {
-            val wavFile = WavFileReader().read(file)
-            val tag = wavFile.tag ?: return null
-            
-            // 尝试从LYRICS字段获取歌词
-            if (tag.hasField(FieldKey.LYRICS)) {
-                return tag.getFirst(FieldKey.LYRICS)
-            }
-            
-            return null
-        }
-        
-        // 读取M4A/AAC文件中的歌词
-        private fun readM4aLyric(file: File): String? {
-            val audioFile = AudioFileIO.read(file)
-            val tag = audioFile.tag ?: return null
-            
-            // 尝试从LYRICS字段获取歌词
-            if (tag.hasField(FieldKey.LYRICS)) {
-                return tag.getFirst(FieldKey.LYRICS)
             }
             
             return null
@@ -712,27 +684,30 @@ class LyricQQServlet : HttpServlet() {
             
             if (songList.length() > 0) {
                 // 获取第一首歌曲的f字段
-                val fField = songList.getJSONObject(0).getString("f")
-                val fParts = fField.split("|")
-                
-                if (fParts.size > 0) {
-                    // 获取歌曲ID（songid）
-                    val songId = fParts[0]
+                val songInfo = songList.getJSONObject(0)
+                if (songInfo.has("f") && !songInfo.isNull("f")) {
+                    val fField = songInfo.getString("f")
+                    val fParts = fField.split("|")
                     
-                    // 使用歌曲ID获取真实的mid
-                    val mid = getSongMidFromId(songId)
-                    if (mid != null) {
-                        // 使用QQ音乐歌词API获取歌词
-                        val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?format=json&nobase64=1&songmid=$mid"
-                        val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                            "Referer" to "https://y.qq.com/portal/player.html"
-                        ))
+                    if (fParts.size > 0) {
+                        // 获取歌曲ID（songid）
+                        val songId = fParts[0]
                         
-                        val lyricObj = JSONObject(lyricResult)
-                        
-                        if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
-                            return lyricObj.getString("lyric")
+                        // 使用歌曲ID获取真实的mid
+                        val mid = getSongMidFromId(songId)
+                        if (mid != null) {
+                            // 使用QQ音乐歌词API获取歌词
+                            val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?format=json&nobase64=1&songmid=$mid"
+                            val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
+                                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                                "Referer" to "https://y.qq.com/portal/player.html"
+                            ))
+                            
+                            val lyricObj = JSONObject(lyricResult)
+                            
+                            if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
+                                return lyricObj.getString("lyric")
+                            }
                         }
                     }
                 }
