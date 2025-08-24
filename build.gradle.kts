@@ -28,7 +28,7 @@ dependencies {
     implementation("org.json:json:20210307")
     // Kotlin标准库
     implementation(kotlin("stdlib-jdk8"))
-    implementation("org:jaudiotagger:2.0.3")
+    implementation("net.jthink:jaudiotagger:3.0.1")
     // JSON序列化
     implementation("com.google.code.gson:gson:2.10.1")
 }
@@ -57,6 +57,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
