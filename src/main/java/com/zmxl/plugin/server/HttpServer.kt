@@ -413,7 +413,7 @@ class HttpServer(private val port: Int) {
          */
         private fun extractLyricsFromFile(file: File): String {
             val metadata = Metadata()
-            val parser = AutoDetectParser()
+            val parser = org.apache.tika.parser.audio.AudioParser()
             val context = ParseContext()
             
             // 使用BodyContentHandler来忽略实际音频内容，只处理元数据
@@ -1137,6 +1137,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
