@@ -17,12 +17,6 @@ kotlin {
     }
 }
 
-repositories {
-    // 添加Maven中央仓库（如果没有）
-    mavenCentral()
-    // 添加JitPack仓库（SaltAudioTag可能托管在此）
-    maven { url "https://jitpack.io" }
-}
 
 dependencies {
     // SPW API
@@ -81,3 +75,4 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.Kapt> {
         apiVersion = "2.1"
     }
 }
+
