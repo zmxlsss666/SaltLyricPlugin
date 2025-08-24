@@ -11,22 +11,19 @@ import org.eclipse.jetty.servlet.ServletHolder
 import jakarta.servlet.http.HttpServlet
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.PrintWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.util.Base64
-import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
-import org.jaudiotagger.tag.id3.AbstractID3v2Tag
-import org.jaudiotagger.tag.id3.ID3v23Tag
-import org.jaudiotagger.tag.id3.ID3v24Tag
-import java.io.File
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -54,11 +51,11 @@ class HttpServer(private val port: Int) {
         context.addServlet(ServletHolder(MuteServlet()), "/api/mute")
         
         // 注册歌词API
-        context.addServlet(ServletHolder(LyricFromFileServlet()), "/api/lyric")
         context.addServlet(ServletHolder(Lyric163Servlet()), "/api/lyric163") // 网易云歌词API
         context.addServlet(ServletHolder(LyricQQServlet()), "/api/lyricqq")   // QQ音乐歌词API
         context.addServlet(ServletHolder(LyricKugouServlet()), "/api/lyrickugou") // 酷狗音乐歌词API
         context.addServlet(ServletHolder(LyricSpwServlet()), "/api/lyricspw") // SPW歌词API
+        context.addServlet(ServletHolder(LyricFileServlet()), "/api/lyric")   // 新增：本地音频文件歌词API
         
         context.addServlet(ServletHolder(PicServlet()), "/api/pic")
         context.addServlet(ServletHolder(CurrentPositionServlet()), "/api/current-position")
@@ -260,124 +257,7 @@ class HttpServer(private val port: Int) {
             }
         }
     }
-    
-/**
- * 从音频文件读取歌词API
- */
-class LyricFromFileServlet : HttpServlet() {
-    private val gson = Gson()
-    
-    @Throws(IOException::class)
-    override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-        resp.contentType = "application/json;charset=UTF-8"
-        
-        val filePath = req.getParameter("filePath")
-        if (filePath.isNullOrBlank()) {
-            resp.status = HttpServletResponse.SC_BAD_REQUEST
-            resp.writer.write(gson.toJson(mapOf(
-                "status" to "error",
-                "message" to "文件路径参数 filePath 不能为空"
-            )))
-            return
-        }
-        
-        try {
-            // 解码URL编码的文件路径
-            val decodedFilePath = URLDecoder.decode(filePath, "UTF-8")
-            val file = File(decodedFilePath)
-            
-            // 检查文件是否存在
-            if (!file.exists()) {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "文件不存在: $decodedFilePath"
-                )))
-                return
-            }
-            
-            // 检查文件是否可读
-            if (!file.canRead()) {
-                resp.status = HttpServletResponse.SC_FORBIDDEN
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "无法读取文件: $decodedFilePath"
-                )))
-                return
-            }
-            
-            // 使用 JAudioTagger 读取音频文件元数据
-            val audioFile = AudioFileIO.read(file)
-            val tag = audioFile.tag
-            
-            if (tag == null) {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "音频文件没有元数据标签"
-                )))
-                return
-            }
-            
-            // 尝试从不同字段获取歌词
-            var lyrics: String? = null
-            
-            // 1. 首先尝试标准歌词字段
-            if (tag.hasField(FieldKey.LYRICS)) {
-                lyrics = tag.getFirst(FieldKey.LYRICS)
-            }
-            
-            // 2. 如果没有找到，尝试从USLT帧获取（ID3v2标签）
-            if (lyrics.isNullOrBlank() && tag is AbstractID3v2Tag) {
-                val usltFrame = tag.getFirstField("USLT")
-                if (usltFrame != null) {
-                    lyrics = usltFrame.toString()
-                }
-            }
-            
-            // 3. 尝试从其他可能包含歌词的字段获取
-            if (lyrics.isNullOrBlank()) {
-                val potentialLyricFields = listOf(
-                    FieldKey.LYRICS, FieldKey.LYRICIST, FieldKey.COMMENT,
-                    FieldKey.DESCRIPTION, FieldKey.SUBTITLE
-                )
-                
-                for (field in potentialLyricFields) {
-                    if (tag.hasField(field)) {
-                        val value = tag.getFirst(field)
-                        if (!value.isNullOrBlank() && value.length > 10) { // 假设歌词长度大于10字符
-                            lyrics = value
-                            break
-                        }
-                    }
-                }
-            }
-            
-            if (!lyrics.isNullOrBlank()) {
-                val response = mapOf(
-                    "status" to "success",
-                    "lyric" to lyrics,
-                    "source" to "file",
-                    "filePath" to decodedFilePath
-                )
-                resp.writer.write(gson.toJson(response))
-            } else {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "未在音频文件中找到歌词"
-                )))
-            }
-        } catch (e: Exception) {
-            resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-            resp.writer.write(gson.toJson(mapOf(
-                "status" to "error",
-                "message" to "读取音频文件歌词失败: ${e.message}"
-            )))
-            e.printStackTrace()
-        }
-    }
-}
+
     /**
      * 音量减少API
      */
@@ -443,6 +323,94 @@ class LyricFromFileServlet : HttpServlet() {
                     "status" to "error",
                     "message" to "静音操作失败: ${e.message}"
                 )))
+            }
+        }
+    }
+
+    /**
+     * 本地音频文件歌词API
+     * 通过jaudiotagger库读取音频文件元数据中的歌词
+     */
+    class LyricFileServlet : HttpServlet() {
+        private val gson = Gson()
+        
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            // 获取媒体文件路径参数
+            val filePath = req.getParameter("filePath")
+            if (filePath.isNullOrBlank()) {
+                resp.status = HttpServletResponse.SC_BAD_REQUEST
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "文件路径参数(filePath)不能为空"
+                )))
+                return
+            }
+            
+            try {
+                // 读取音频文件的歌词
+                val lyricContent = readLyricFromFile(filePath)
+                
+                if (lyricContent != null && lyricContent.isNotBlank()) {
+                    val response = mapOf(
+                        "status" to "success",
+                        "lyric" to lyricContent,
+                        "source" to "file",
+                        "filePath" to filePath
+                    )
+                    resp.writer.write(gson.toJson(response))
+                } else {
+                    resp.status = HttpServletResponse.SC_NOT_FOUND
+                    resp.writer.write(gson.toJson(mapOf(
+                        "status" to "error",
+                        "message" to "未找到文件中的歌词信息",
+                        "filePath" to filePath
+                    )))
+                }
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "读取文件歌词失败: ${e.message}",
+                    "filePath" to filePath
+                )))
+            }
+        }
+        
+        // 从音频文件中读取歌词
+        private fun readLyricFromFile(filePath: String): String? {
+            val file = File(filePath)
+            if (!file.exists() || !file.isFile) {
+                throw IOException("文件不存在或不是有效的文件")
+            }
+            
+            // 检查文件扩展名是否支持
+            val fileName = file.name.toLowerCase()
+            if (!fileName.endsWith(".mp3") && !fileName.endsWith(".wav") && 
+                !fileName.endsWith(".flac") && !fileName.endsWith(".m4a") &&
+                !fileName.endsWith(".ogg") && !fileName.endsWith(".wma")) {
+                throw IOException("不支持的文件格式，支持的格式: mp3, wav, flac, m4a, ogg, wma")
+            }
+            
+            return try {
+                // 使用jaudiotagger读取音频文件元数据
+                val audioFile = AudioFileIO.read(file)
+                val tag = audioFile.tag
+                
+                // 尝试从不同的标签字段获取歌词
+                var lyric = tag.getFirst(FieldKey.LYRICS)
+                
+                // 如果主要歌词字段为空，尝试其他可能包含歌词的字段
+                if (lyric.isNullOrBlank()) {
+                    lyric = tag.getFirst(FieldKey.UNSYNC_LYRICS)
+                }
+                
+                // 处理可能的编码问题
+                lyric?.let { String(it.toByteArray(Charsets.ISO_8859_1), StandardCharsets.UTF_8) }
+            } catch (e: Exception) {
+                throw IOException("无法读取音频文件的元数据: ${e.message}", e)
             }
         }
     }
@@ -900,7 +868,7 @@ class LyricKugouServlet : HttpServlet() {
                 val base64Content = lyricJson.getString("content")
                 
                 // 解码base64歌词
-                return String(Base64.getDecoder().decode(base64Content), Charsets.UTF_8)
+                return String(Base64.getDecoder().decode(base64Content), StandardCharsets.UTF_8)
             }
         } catch (e: Exception) {
             println("获取歌词内容失败: ${e.message}")
@@ -1078,4 +1046,3 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
-
