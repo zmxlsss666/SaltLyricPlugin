@@ -58,7 +58,6 @@ class HttpServer(private val port: Int) {
         context.addServlet(ServletHolder(Lyric163Servlet()), "/api/lyric163") // 网易云歌词API
         context.addServlet(ServletHolder(LyricQQServlet()), "/api/lyricqq")   // QQ音乐歌词API
         context.addServlet(ServletHolder(LyricKugouServlet()), "/api/lyrickugou") // 酷狗音乐歌词API
-        context.addServlet(ServletHolder(LyricSpwServlet()), "/api/lyricspw") // SPW歌词API
         context.addServlet(ServletHolder(LyricFileServlet()), "/api/lyric")
         
         context.addServlet(ServletHolder(PicServlet()), "/api/pic")
@@ -1049,67 +1048,6 @@ class LyricKugouServlet : HttpServlet() {
 }
 
     /**
-     * SPW内置歌词API
-     */
-    class LyricSpwServlet : HttpServlet() {
-        private val gson = Gson()
-        
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-            
-            try {
-                val currentPosition = PlaybackStateHolder.currentPosition
-                val (currentLine, nextLine) = PlaybackStateHolder.getCurrentAndNextLyrics(currentPosition)
-                
-                if (currentLine != null || nextLine != null) {
-                    // 构建简化的LRC格式歌词，只包含当前行和下一行
-                    val simplifiedLyrics = buildString {
-                        if (currentLine != null) {
-                            append(formatTimeTag(currentLine.time))
-                            append(currentLine.text)
-                            append("\n")
-                        }
-                        
-                        if (nextLine != null) {
-                            append(formatTimeTag(nextLine.time))
-                            append(nextLine.text)
-                        }
-                    }
-                    
-                    val response = mapOf(
-                        "status" to "success",
-                        "lyric" to simplifiedLyrics,
-                        "source" to "spw",
-                        "simplified" to true
-                    )
-                    resp.writer.write(gson.toJson(response))
-                } else {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "未找到SPW歌词"
-                    )))
-                }
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "获取SPW歌词失败: ${e.message}"
-                )))
-            }
-        }
-        
-        // 格式化时间标签
-        private fun formatTimeTag(timeMs: Long): String {
-            val minutes = timeMs / 60000
-            val seconds = (timeMs % 60000) / 1000
-            val millis = timeMs % 1000
-            return String.format("[%02d:%02d.%03d]", minutes, seconds, millis)
-        }
-    }
-
-    /**
      * 封面图片API
      */
     class PicServlet : HttpServlet() {
@@ -1199,6 +1137,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
