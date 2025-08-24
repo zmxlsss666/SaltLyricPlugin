@@ -1157,10 +1157,10 @@ object DesktopLyrics {
         
         // 按顺序尝试不同的歌词API
         val endpoints = listOf(
-            "/api/lyric163",
-            "/api/lyricqq", 
-            "/api/lyrickugou",
-            "/api/lyricspw"
+            "/api/lyric",
+            "/api/lyric163", 
+            "/api/lyricqq",
+            "/api/lyrickugou"
         )
         
         for (endpoint in endpoints) {
@@ -1510,3 +1510,4 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
