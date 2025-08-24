@@ -24,13 +24,12 @@ dependencies {
     // Jetty HTTP服务器
     implementation("org.eclipse.jetty:jetty-server:11.0.15")
     implementation("org.eclipse.jetty:jetty-servlet:11.0.15")
-    
-    // 最新JNA坐标（已迁移到net.java.dev.jna）
     implementation("net.java.dev.jna:jna:5.10.0")
     implementation("net.java.dev.jna:jna-platform:5.10.0")
     implementation("org.json:json:20210307")
     // Kotlin标准库
     implementation(kotlin("stdlib-jdk8"))
+    implementation("com.github.RouHim:jaudiotagger:1.4.22")
     
     // JSON序列化
     implementation("com.google.code.gson:gson:2.10.1")
@@ -60,6 +59,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
