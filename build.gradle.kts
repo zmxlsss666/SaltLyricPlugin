@@ -25,7 +25,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.apache.tika:tika-core:3.2.2")
     implementation("org.apache.tika:tika-parsers:3.2.2")
-    implementation("org.apache.tika:tika-parsers-standard-package:3.2.2")
+    implementation("org.apache.tika:tika-parser-audiovideo-module:3.2.2")
 }
 val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
 val pluginId = "zmxl-spw-control"
@@ -52,6 +52,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
