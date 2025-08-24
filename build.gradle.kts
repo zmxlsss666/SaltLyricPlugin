@@ -14,27 +14,18 @@ kotlin {
 }
 
 dependencies {
-    // SPW API
     compileOnly("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
     kapt("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
-    
-    // Jetty HTTP服务器
     implementation("org.eclipse.jetty:jetty-server:11.0.15")
     implementation("org.eclipse.jetty:jetty-servlet:11.0.15")
-    
-    // 最新JNA坐标（已迁移到net.java.dev.jna）
     implementation("net.java.dev.jna:jna:5.10.0")
     implementation("net.java.dev.jna:jna-platform:5.10.0")
     implementation("org.json:json:20210307")
-    // Kotlin标准库
     implementation(kotlin("stdlib-jdk8"))
-    
-    // JSON序列化
     implementation("com.google.code.gson:gson:2.10.1")
-    
-    // Apache Tika for metadata extraction
-    implementation("org.apache.tika:tika-core:2.9.1")
-    implementation("org.apache.tika:tika-parsers:2.9.1")
+    implementation("org.apache.tika:tika-core:3.2.2")
+    implementation("org.apache.tika:tika-parsers:3.2.2")
+    implementation("org.apache.tika:tika-parsers-standard-package:3.2.2")
 }
 val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
 val pluginId = "zmxl-spw-control"
