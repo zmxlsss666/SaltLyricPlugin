@@ -68,11 +68,7 @@ tasks.register<Jar>("plugin") {
     archiveExtension.set("zip")
 }
 
-// 解决KAPT对Kotlin 2.0+的支持问题
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.Kapt> {
-    kotlinOptions {
-        languageVersion = "2.1"
-        apiVersion = "2.1"
-    }
+
 }
+
 
