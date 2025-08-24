@@ -13,14 +13,13 @@ kotlin {
     jvmToolchain(21)
 }
 
-val kotlinVersion = "2.2.0"
+
 
 dependencies {
     // SPW API
     compileOnly("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
     kapt("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
-    implementation ("org.apache.tika:tika-core:2.7.0")
-    implementation ("org.apache.tika:tika-parsers:2.7.0")
+
     // Jetty HTTP服务器
     implementation("org.eclipse.jetty:jetty-server:11.0.15")
     implementation("org.eclipse.jetty:jetty-servlet:11.0.15")
@@ -29,8 +28,9 @@ dependencies {
     implementation("org.json:json:20210307")
     // Kotlin标准库
     implementation(kotlin("stdlib-jdk8"))
-    implementation("com.github.RouHim:jaudiotagger:1.4.22")
-    
+    implementation("org.jaudiotagger:jaudiotagger:2.0.3")
+    // https://mvnrepository.com/artifact/org/jaudiotagger
+    implementation("org:jaudiotagger:2.0.3")
     // JSON序列化
     implementation("com.google.code.gson:gson:2.10.1")
 }
@@ -59,6 +59,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
