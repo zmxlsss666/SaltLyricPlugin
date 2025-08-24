@@ -21,14 +21,18 @@ import java.util.Base64
 import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
-import net.jaudiotagger.audio.AudioFileIO
-import net.jaudiotagger.audio.exceptions.CannotReadException
-import net.jaudiotagger.audio.exceptions.InvalidAudioFrameException
-import net.jaudiotagger.audio.exceptions.ReadOnlyFileException
-import net.jaudiotagger.tag.FieldKey
-import net.jaudiotagger.tag.TagException
-import net.jaudiotagger.tag.id.*
 import java.io.File
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.charset.StandardCharsets
+import com.drew.imaging.ImageMetadataReader
+import com.drew.metadata.Metadata
+import com.drew.metadata.mp3.Mp3Directory
+import com.drew.metadata.flac.FlacDirectory
+import com.drew.metadata.Tag
+import com.drew.metadata.iptc.IptcDirectory
+import com.drew.metadata.xmp.XmpDirectory
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -56,7 +60,7 @@ class HttpServer(private val port: Int) {
         context.addServlet(ServletHolder(MuteServlet()), "/api/mute")
         
         // 注册歌词API
-        context.addServlet(ServletHolder(LyricFromFileServlet()), "/api/lyric")
+        context.addServlet(ServletHolder(LyricFileServlet()), "/api/lyric")
         context.addServlet(ServletHolder(Lyric163Servlet()), "/api/lyric163") // 网易云歌词API
         context.addServlet(ServletHolder(LyricQQServlet()), "/api/lyricqq")   // QQ音乐歌词API
         context.addServlet(ServletHolder(LyricKugouServlet()), "/api/lyrickugou") // 酷狗音乐歌词API
@@ -331,204 +335,294 @@ class HttpServer(private val port: Int) {
             }
         }
     }
-    /**
-     * 从音频文件读取歌词API
+
+        /**
+     * 从音频文件中读取内嵌歌词的API
      */
-    class LyricFromFileServlet : HttpServlet() {
+    class LyricFileServlet : HttpServlet() {
         private val gson = Gson()
         
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
             
-            val filePath = req.getParameter("filePath")
+            val filePath = req.getParameter("path")
             if (filePath.isNullOrBlank()) {
                 resp.status = HttpServletResponse.SC_BAD_REQUEST
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "文件路径参数 filePath 不能为空"
+                    "message" to "参数path不能为空"
+                )))
+                return
+            }
+            
+            val file = File(filePath)
+            if (!file.exists() || !file.isFile) {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "文件不存在"
                 )))
                 return
             }
             
             try {
-                // 解码URL编码的文件路径
-                val decodedFilePath = URLDecoder.decode(filePath, "UTF-8")
-                val file = File(decodedFilePath)
-                
-                // 检查文件是否存在
-                if (!file.exists()) {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "文件不存在: $decodedFilePath"
-                    )))
-                    return
+                val lyric = when (file.extension.toLowerCase()) {
+                    "mp3" -> getLyricFromMp3(file)
+                    "flac" -> getLyricFromFlac(file)
+                    else -> null
                 }
                 
-                // 检查文件是否可读
-                if (!file.canRead()) {
-                    resp.status = HttpServletResponse.SC_FORBIDDEN
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "无法读取文件: $decodedFilePath"
-                    )))
-                    return
-                }
-                
-                // 使用 JAudioTagger 读取音频文件元数据
-                val audioFile = AudioFileIO.read(file)
-                val tag = audioFile.tag
-                
-                if (tag == null) {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "音频文件没有元数据标签"
-                    )))
-                    return
-                }
-                
-                // 尝试从不同字段获取歌词
-                var lyrics: String? = null
-                
-                // 1. 首先尝试标准歌词字段
-                if (tag.hasField(FieldKey.LYRICS)) {
-                    lyrics = tag.getFirst(FieldKey.LYRICS)
-                }
-                
-                // 2. 如果没有找到，尝试从ID3v2标签的USLT帧获取
-                if ((lyrics.isNullOrBlank() || lyrics == " ") && tag is AbstractID3v2Tag) {
-                    // 获取所有USLT帧
-                    val usltFrames = tag.getFields("USLT")
-                    for (field in usltFrames) {
-                        if (field is AbstractID3v2Frame && field.body is FrameBodyUSLT) {
-                            val frameBody = field.body as FrameBodyUSLT
-                            val frameLyrics = frameBody.lyrics
-                            if (!frameLyrics.isNullOrBlank() && frameLyrics != " ") {
-                                lyrics = frameLyrics
-                                break
-                            }
-                        }
-                    }
-                }
-                
-                // 3. 如果没有找到，尝试从ID3v2标签的SYLT帧获取（同步歌词）
-                if ((lyrics.isNullOrBlank() || lyrics == " ") && tag is AbstractID3v2Tag) {
-                    val syltFrames = tag.getFields("SYLT")
-                    for (field in syltFrames) {
-                        if (field is AbstractID3v2Frame && field.body is FrameBodySYLT) {
-                            val frameBody = field.body as FrameBodySYLT
-                            // 将同步歌词转换为LRC格式
-                            val convertedLyrics = convertSyltToLrc(frameBody)
-                            if (!convertedLyrics.isNullOrBlank()) {
-                                lyrics = convertedLyrics
-                                break
-                            }
-                        }
-                    }
-                }
-                
-                // 4. 尝试从其他可能包含歌词的字段获取
-                if (lyrics.isNullOrBlank() || lyrics == " ") {
-                    val potentialLyricFields = listOf(
-                        FieldKey.LYRICIST, FieldKey.COMMENT,
-                        FieldKey.DESCRIPTION, FieldKey.SUBTITLE
-                    )
-                    
-                    for (field in potentialLyricFields) {
-                        if (tag.hasField(field)) {
-                            val value = tag.getFirst(field)
-                            if (!value.isNullOrBlank() && value != " " && value.length > 10) {
-                                lyrics = value
-                                break
-                            }
-                        }
-                    }
-                }
-                
-                if (!lyrics.isNullOrBlank() && lyrics != " ") {
+                if (lyric != null) {
                     val response = mapOf(
                         "status" to "success",
-                        "lyric" to lyrics,
-                        "source" to "file",
-                        "filePath" to decodedFilePath
+                        "lyric" to lyric,
+                        "source" to "file"
                     )
                     resp.writer.write(gson.toJson(response))
                 } else {
                     resp.status = HttpServletResponse.SC_NOT_FOUND
                     resp.writer.write(gson.toJson(mapOf(
                         "status" to "error",
-                        "message" to "未在音频文件中找到歌词"
+                        "message" to "未找到内嵌歌词"
                     )))
                 }
-            } catch (e: CannotReadException) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "无法读取音频文件: ${e.message}"
-                )))
-            } catch (e: TagException) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "标签解析错误: ${e.message}"
-                )))
-            } catch (e: ReadOnlyFileException) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "文件是只读的: ${e.message}"
-                )))
-            } catch (e: InvalidAudioFrameException) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "无效的音频帧: ${e.message}"
-                )))
             } catch (e: Exception) {
                 resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "读取音频文件歌词失败: ${e.message}"
+                    "message" to "读取歌词失败: ${e.message}"
                 )))
-                e.printStackTrace()
             }
         }
         
-        /**
-         * 将SYLT帧的同步歌词转换为LRC格式
-         */
-        private fun convertSyltToLrc(frameBody: FrameBodySYLT): String {
-            val builder = StringBuilder()
-            
+        private fun getLyricFromMp3(file: File): String? {
             try {
-                // 获取时间戳和歌词对
-                val timestamps = frameBody.timeStamps
-                val lyrics = frameBody.lyrics
+                // 使用metadata-extractor库读取MP3元数据
+                val metadata = ImageMetadataReader.readMetadata(file)
                 
-                // 确保时间戳和歌词数量匹配
-                val minSize = minOf(timestamps.size, lyrics.size)
+                // 尝试从ID3v2标签读取歌词
+                for (directory in metadata.directories) {
+                    if (directory is Mp3Directory) {
+                        // 查找USLT帧（Unsynchronised lyrics/text transcription）
+                        for (tag in directory.tags) {
+                            if (tag.tagName == "USLT" || tag.tagName == "Unsynchronised lyrics") {
+                                return tag.description
+                            }
+                        }
+                    }
+                    
+                    // 尝试从其他标签读取歌词
+                    for (tag in directory.tags) {
+                        if (tag.tagName.contains("lyric", ignoreCase = true) || 
+                            tag.tagName.contains("歌词", ignoreCase = false)) {
+                            return tag.description
+                        }
+                    }
+                }
                 
-                for (i in 0 until minSize) {
-                    val timestamp = timestamps[i]
-                    val lyric = lyrics[i]
+                // 如果metadata-extractor没有找到歌词，尝试手动解析ID3v2标签
+                return parseId3v2Lyrics(file)
+            } catch (e: Exception) {
+                println("从MP3文件读取歌词失败: ${e.message}")
+                return null
+            }
+        }
+        
+        private fun parseId3v2Lyrics(file: File): String? {
+            try {
+                RandomAccessFile(file, "r").use { raf ->
+                    // 读取ID3v2头部
+                    val header = ByteArray(10)
+                    raf.read(header)
                     
-                    // 将时间戳转换为LRC格式 [mm:ss.xx]
-                    val minutes = timestamp / 60000
-                    val seconds = (timestamp % 60000) / 1000
-                    val hundredths = (timestamp % 1000) / 10
+                    // 检查ID3v2标识
+                    if (String(header, 0, 3) != "ID3") {
+                        return null
+                    }
                     
-                    builder.append(String.format("[%02d:%02d.%02d]", minutes, seconds, hundredths))
-                        .append(lyric)
-                        .append("\n")
+                    // 获取标签大小（不包括头部10字节）
+                    val size = syncsafeToInt(header, 6)
+                    
+                    // 读取整个ID3v2标签
+                    val tagData = ByteArray(size)
+                    raf.read(tagData)
+                    
+                    var pos = 0
+                    while (pos < size - 10) {
+                        // 读取帧头
+                        val frameId = String(tagData, pos, 4)
+                        val frameSize = bytesToInt(tagData, pos + 4)
+                        val flags = bytesToShort(tagData, pos + 8)
+                        
+                        // 检查是否是USLT帧（歌词帧）
+                        if (frameId == "USLT") {
+                            // 跳过帧头和文本编码（1字节）
+                            var lyricPos = pos + 11
+                            val encoding = tagData[pos + 10]
+                            
+                            // 跳过语言代码（3字节）
+                            lyricPos += 3
+                            
+                            // 跳过内容描述符（以null结尾的字符串）
+                            while (lyricPos < pos + 10 + frameSize && tagData[lyricPos] != 0.toByte()) {
+                                lyricPos++
+                            }
+                            lyricPos++ // 跳过null终止符
+                            
+                            // 提取歌词文本
+                            val lyricBytes = ByteArray(frameSize - (lyricPos - pos - 10))
+                            System.arraycopy(tagData, lyricPos, lyricBytes, 0, lyricBytes.size)
+                            
+                            return when (encoding) {
+                                0.toByte() -> String(lyricBytes, StandardCharsets.ISO_8859_1) // ISO-8859-1
+                                1.toByte() -> {
+                                    // 检查是否是UTF-16 BOM
+                                    if (lyricBytes.size >= 2 && (
+                                        (lyricBytes[0] == 0xFE.toByte() && lyricBytes[1] == 0xFF.toByte()) || 
+                                        (lyricBytes[0] == 0xFF.toByte() && lyricBytes[1] == 0xFE.toByte())
+                                    )) {
+                                        String(lyricBytes, 2, lyricBytes.size - 2, StandardCharsets.UTF_16)
+                                    } else {
+                                        String(lyricBytes, StandardCharsets.UTF_16)
+                                    }
+                                }
+                                2.toByte() -> String(lyricBytes, StandardCharsets.UTF_16BE) // UTF-16BE
+                                3.toByte() -> String(lyricBytes, StandardCharsets.UTF_8) // UTF-8
+                                else -> String(lyricBytes, StandardCharsets.ISO_8859_1)
+                            }
+                        }
+                        
+                        pos += 10 + frameSize
+                    }
                 }
             } catch (e: Exception) {
-                println("转换SYLT帧失败: ${e.message}")
-                return ""
+                println("手动解析ID3v2歌词失败: ${e.message}")
             }
-            
-            return builder.toString()
+            return null
+        }
+        
+        private fun getLyricFromFlac(file: File): String? {
+            try {
+                // 使用metadata-extractor库读取FLAC元数据
+                val metadata = ImageMetadataReader.readMetadata(file)
+                
+                // 尝试从Vorbis注释读取歌词
+                for (directory in metadata.directories) {
+                    if (directory is FlacDirectory) {
+                        // 查找歌词相关的标签
+                        for (tag in directory.tags) {
+                            if (tag.tagName.equals("LYRICS", ignoreCase = true) || 
+                                tag.tagName.equals("LYRIC", ignoreCase = true)) {
+                                return tag.description
+                            }
+                        }
+                    }
+                    
+                    // 尝试从其他标签读取歌词
+                    for (tag in directory.tags) {
+                        if (tag.tagName.contains("lyric", ignoreCase = true) || 
+                            tag.tagName.contains("歌词", ignoreCase = false)) {
+                            return tag.description
+                        }
+                    }
+                }
+                
+                // 如果metadata-extractor没有找到歌词，尝试手动解析FLAC文件
+                return parseFlacLyrics(file)
+            } catch (e: Exception) {
+                println("从FLAC文件读取歌词失败: ${e.message}")
+                return null
+            }
+        }
+        
+        private fun parseFlacLyrics(file: File): String? {
+            try {
+                RandomAccessFile(file, "r").use { raf ->
+                    // 检查FLAC文件标识
+                    val header = ByteArray(4)
+                    raf.read(header)
+                    if (String(header) != "fLaC") {
+                        return null
+                    }
+                    
+                    // 读取元数据块
+                    var lastBlock = false
+                    while (!lastBlock) {
+                        val blockHeader = ByteArray(4)
+                        raf.read(blockHeader)
+                        
+                        val isLast = (blockHeader[0].toInt() and 0x80) != 0
+                        val blockType = blockHeader[0].toInt() and 0x7F
+                        val blockLength = bytesToInt(blockHeader, 1) and 0xFFFFFF
+                        
+                        if (blockType == 4) { // VORBIS_COMMENT块
+                            // 读取Vorbis注释
+                            val commentData = ByteArray(blockLength)
+                            raf.read(commentData)
+                            
+                            val buffer = ByteBuffer.wrap(commentData).order(ByteOrder.LITTLE_ENDIAN)
+                            
+                            // 跳过vendor字符串
+                            val vendorLength = buffer.int
+                            buffer.position(buffer.position() + vendorLength)
+                            
+                            // 读取用户注释数量
+                            val commentCount = buffer.int
+                            
+                            // 遍历所有注释
+                            for (i in 0 until commentCount) {
+                                val commentLength = buffer.int
+                                val commentBytes = ByteArray(commentLength)
+                                buffer.get(commentBytes)
+                                
+                                val comment = String(commentBytes, StandardCharsets.UTF_8)
+                                val equalsIndex = comment.indexOf('=')
+                                if (equalsIndex > 0) {
+                                    val key = comment.substring(0, equalsIndex).toUpperCase()
+                                    val value = comment.substring(equalsIndex + 1)
+                                    
+                                    if (key == "LYRICS" || key == "LYRIC") {
+                                        return value
+                                    }
+                                }
+                            }
+                            
+                            break
+                        } else {
+                            // 跳过非VORBIS_COMMENT块
+                            raf.skipBytes(blockLength)
+                        }
+                        
+                        lastBlock = isLast
+                    }
+                }
+            } catch (e: Exception) {
+                println("手动解析FLAC歌词失败: ${e.message}")
+            }
+            return null
+        }
+        
+        // 辅助方法：将syncsafe整数转换为普通整数
+        private fun syncsafeToInt(bytes: ByteArray, offset: Int): Int {
+            return (bytes[offset].toInt() and 0x7F) shl 21 or
+                   (bytes[offset + 1].toInt() and 0x7F) shl 14 or
+                   (bytes[offset + 2].toInt() and 0x7F) shl 7 or
+                   (bytes[offset + 3].toInt() and 0x7F)
+        }
+        
+        // 辅助方法：将字节数组转换为整数
+        private fun bytesToInt(bytes: ByteArray, offset: Int): Int {
+            return (bytes[offset].toInt() and 0xFF) shl 24 or
+                   (bytes[offset + 1].toInt() and 0xFF) shl 16 or
+                   (bytes[offset + 2].toInt() and 0xFF) shl 8 or
+                   (bytes[offset + 3].toInt() and 0xFF)
+        }
+        
+        // 辅助方法：将字节数组转换为短整数
+        private fun bytesToShort(bytes: ByteArray, offset: Int): Short {
+            return ((bytes[offset].toInt() and 0xFF) shl 8 or
+                    (bytes[offset + 1].toInt() and 0xFF)).toShort()
         }
     }
     
@@ -1163,5 +1257,4 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
-
 
