@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServlet
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.PrintWriter
@@ -20,10 +21,17 @@ import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
+import org.jaudiotagger.audio.AudioFile
 import org.jaudiotagger.audio.AudioFileIO
+import org.jaudiotagger.audio.flac.FlacFile
+import org.jaudiotagger.audio.mp3.MP3File
+import org.jaudiotagger.audio.wav.WavFileReader
 import org.jaudiotagger.tag.FieldKey
+import org.jaudiotagger.tag.id3.framebody.FrameBodySYLT
+import org.jaudiotagger.tag.id3.framebody.FrameBodyUSLT
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -55,7 +63,7 @@ class HttpServer(private val port: Int) {
         context.addServlet(ServletHolder(LyricQQServlet()), "/api/lyricqq")   // QQ音乐歌词API
         context.addServlet(ServletHolder(LyricKugouServlet()), "/api/lyrickugou") // 酷狗音乐歌词API
         context.addServlet(ServletHolder(LyricSpwServlet()), "/api/lyricspw") // SPW歌词API
-        context.addServlet(ServletHolder(LyricFileServlet()), "/api/lyric")   // 新增：本地音频文件歌词API
+        context.addServlet(ServletHolder(LyricFromFileServlet()), "/api/lyric") // 新增：从音频文件读取歌词
         
         context.addServlet(ServletHolder(PicServlet()), "/api/pic")
         context.addServlet(ServletHolder(CurrentPositionServlet()), "/api/current-position")
@@ -328,30 +336,29 @@ class HttpServer(private val port: Int) {
     }
 
     /**
-     * 本地音频文件歌词API
-     * 通过jaudiotagger库读取音频文件元数据中的歌词
+     * 从音频文件读取歌词API
      */
-    class LyricFileServlet : HttpServlet() {
+    class LyricFromFileServlet : HttpServlet() {
         private val gson = Gson()
         
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
             
-            // 获取媒体文件路径参数
+            // 获取音频文件路径参数
             val filePath = req.getParameter("filePath")
             if (filePath.isNullOrBlank()) {
                 resp.status = HttpServletResponse.SC_BAD_REQUEST
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "文件路径参数(filePath)不能为空"
+                    "message" to "文件路径参数不能为空"
                 )))
                 return
             }
             
             try {
-                // 读取音频文件的歌词
-                val lyricContent = readLyricFromFile(filePath)
+                // 读取音频文件中的歌词
+                val lyricContent = readLyricFromAudioFile(filePath)
                 
                 if (lyricContent != null && lyricContent.isNotBlank()) {
                     val response = mapOf(
@@ -365,53 +372,133 @@ class HttpServer(private val port: Int) {
                     resp.status = HttpServletResponse.SC_NOT_FOUND
                     resp.writer.write(gson.toJson(mapOf(
                         "status" to "error",
-                        "message" to "未找到文件中的歌词信息",
-                        "filePath" to filePath
+                        "message" to "未在音频文件中找到歌词"
                     )))
                 }
+            } catch (e: FileNotFoundException) {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "文件未找到: ${e.message}"
+                )))
             } catch (e: Exception) {
                 resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "读取文件歌词失败: ${e.message}",
-                    "filePath" to filePath
+                    "message" to "读取音频文件歌词失败: ${e.message}"
                 )))
             }
         }
         
         // 从音频文件中读取歌词
-        private fun readLyricFromFile(filePath: String): String? {
+        private fun readLyricFromAudioFile(filePath: String): String? {
             val file = File(filePath)
             if (!file.exists() || !file.isFile) {
-                throw IOException("文件不存在或不是有效的文件")
-            }
-            
-            // 检查文件扩展名是否支持
-            val fileName = file.name.toLowerCase()
-            if (!fileName.endsWith(".mp3") && !fileName.endsWith(".wav") && 
-                !fileName.endsWith(".flac") && !fileName.endsWith(".m4a") &&
-                !fileName.endsWith(".ogg") && !fileName.endsWith(".wma")) {
-                throw IOException("不支持的文件格式，支持的格式: mp3, wav, flac, m4a, ogg, wma")
+                throw FileNotFoundException("文件不存在: $filePath")
             }
             
             return try {
-                // 使用jaudiotagger读取音频文件元数据
-                val audioFile = AudioFileIO.read(file)
-                val tag = audioFile.tag
-                
-                // 尝试从不同的标签字段获取歌词
-                var lyric = tag.getFirst(FieldKey.LYRICS)
-                
-                // 如果主要歌词字段为空，尝试其他可能包含歌词的字段
-                if (lyric.isNullOrBlank()) {
-                    lyric = tag.getFirst(FieldKey.UNSYNC_LYRICS)
+                // 根据文件扩展名选择合适的读取器
+                val extension = getFileExtension(filePath).lowercase()
+                when (extension) {
+                    "mp3" -> readMp3Lyric(file)
+                    "flac" -> readFlacLyric(file)
+                    "wav" -> readWavLyric(file)
+                    "m4a", "aac" -> readM4aLyric(file)
+                    else -> {
+                        println("不支持的文件格式: $extension")
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                println("读取音频文件歌词时出错: ${e.message}")
+                null
+            }
+        }
+        
+        // 获取文件扩展名
+        private fun getFileExtension(filePath: String): String {
+            val lastDotIndex = filePath.lastIndexOf('.')
+            return if (lastDotIndex > 0 && lastDotIndex < filePath.length - 1) {
+                filePath.substring(lastDotIndex + 1)
+            } else {
+                ""
+            }
+        }
+        
+        // 读取MP3文件中的歌词
+        private fun readMp3Lyric(file: File): String? {
+            val mp3File = MP3File(file)
+            
+            // 尝试从ID3v2标签获取歌词
+            val id3v2Tag = mp3File.id3v2Tag
+            if (id3v2Tag != null) {
+                // 尝试从非同步歌词帧获取
+                val usltFrames = id3v2Tag.getFramesOfType(FrameBodyUSLT.ID)
+                if (usltFrames.isNotEmpty()) {
+                    val usltFrame = usltFrames[0].body as FrameBodyUSLT
+                    return usltFrame.lyrics
                 }
                 
-                // 处理可能的编码问题
-                lyric?.let { String(it.toByteArray(Charsets.ISO_8859_1), StandardCharsets.UTF_8) }
-            } catch (e: Exception) {
-                throw IOException("无法读取音频文件的元数据: ${e.message}", e)
+                // 尝试从同步歌词帧获取
+                val syltFrames = id3v2Tag.getFramesOfType(FrameBodySYLT.ID)
+                if (syltFrames.isNotEmpty()) {
+                    val syltFrame = syltFrames[0].body as FrameBodySYLT
+                    return syltFrame.text.joinToString("\n")
+                }
             }
+            
+            // 尝试从ID3v1标签获取
+            val id3v1Tag = mp3File.id3v1Tag
+            if (id3v1Tag != null && id3v1Tag.comment.isNotBlank()) {
+                return id3v1Tag.comment
+            }
+            
+            return null
+        }
+        
+        // 读取FLAC文件中的歌词
+        private fun readFlacLyric(file: File): String? {
+            val flacFile = FlacFile(file)
+            val tag = flacFile.tag ?: return null
+            
+            // 尝试从LYRICS字段获取歌词
+            if (tag.hasField(FieldKey.LYRICS)) {
+                return tag.getFirst(FieldKey.LYRICS)
+            }
+            
+            // 尝试从DESCRIPTION字段获取
+            if (tag.hasField(FieldKey.DESCRIPTION)) {
+                return tag.getFirst(FieldKey.DESCRIPTION)
+            }
+            
+            return null
+        }
+        
+        // 读取WAV文件中的歌词
+        private fun readWavLyric(file: File): String? {
+            val wavFile = WavFileReader().read(file)
+            val tag = wavFile.tag ?: return null
+            
+            // 尝试从LYRICS字段获取歌词
+            if (tag.hasField(FieldKey.LYRICS)) {
+                return tag.getFirst(FieldKey.LYRICS)
+            }
+            
+            return null
+        }
+        
+        // 读取M4A/AAC文件中的歌词
+        private fun readM4aLyric(file: File): String? {
+            val audioFile = AudioFileIO.read(file)
+            val tag = audioFile.tag ?: return null
+            
+            // 尝试从LYRICS字段获取歌词
+            if (tag.hasField(FieldKey.LYRICS)) {
+                return tag.getFirst(FieldKey.LYRICS)
+            }
+            
+            return null
         }
     }
 
