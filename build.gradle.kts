@@ -33,12 +33,7 @@ dependencies {
     // JSON序列化
     implementation("com.google.code.gson:gson:2.10.1")
     
-    // 音频文件元数据解析
-    implementation("com.drewnoakes:metadata-extractor:2.18.0")
-    
-    // FLAC文件解析
-    implementation("org.jflac:jflac:1.5.2")
-    
+
     // MP3文件解析
     implementation("com.mpatric:mp3agic:0.9.1")
 }
@@ -67,4 +62,5 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
