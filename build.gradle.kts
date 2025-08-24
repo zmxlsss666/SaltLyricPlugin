@@ -67,8 +67,3 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
-
-
-}
-
-
