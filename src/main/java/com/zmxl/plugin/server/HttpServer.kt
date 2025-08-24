@@ -11,20 +11,23 @@ import org.eclipse.jetty.servlet.ServletHolder
 import jakarta.servlet.http.HttpServlet
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
-import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.PrintWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.nio.charset.Charset
 import java.util.Base64
 import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
-import io.github.moriafly.salt.audiotag.AudioFileIO
-import io.github.moriafly.salt.audiotag.tag.FieldKey
+import org.apache.tika.metadata.Metadata
+import org.apache.tika.parser.AutoDetectParser
+import org.apache.tika.parser.ParseContext
+import org.apache.tika.sax.BodyContentHandler
+import org.xml.sax.ContentHandler
+import java.io.File
+import java.io.FileInputStream
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -56,7 +59,7 @@ class HttpServer(private val port: Int) {
         context.addServlet(ServletHolder(LyricQQServlet()), "/api/lyricqq")   // QQ音乐歌词API
         context.addServlet(ServletHolder(LyricKugouServlet()), "/api/lyrickugou") // 酷狗音乐歌词API
         context.addServlet(ServletHolder(LyricSpwServlet()), "/api/lyricspw") // SPW歌词API
-        context.addServlet(ServletHolder(LyricFileServlet()), "/api/lyric")   // 本地FLAC文件歌词API
+        context.addServlet(ServletHolder(LyricFileServlet()), "/api/lyric")
         
         context.addServlet(ServletHolder(PicServlet()), "/api/pic")
         context.addServlet(ServletHolder(CurrentPositionServlet()), "/api/current-position")
@@ -329,7 +332,7 @@ class HttpServer(private val port: Int) {
     }
 
     /**
-     * 本地FLAC文件歌词API
+     * 文件元数据歌词API - 新增的Servlet
      */
     class LyricFileServlet : HttpServlet() {
         private val gson = Gson()
@@ -338,99 +341,146 @@ class HttpServer(private val port: Int) {
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
             
-            // 获取媒体文件路径
-            val filePath = req.getParameter("filePath")
+            val filePath = req.getParameter("path")
             if (filePath.isNullOrBlank()) {
                 resp.status = HttpServletResponse.SC_BAD_REQUEST
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "文件路径参数(filePath)不能为空"
-                )))
-                return
-            }
-            
-            // 检查文件是否为FLAC格式
-            if (!filePath.endsWith(".flac", ignoreCase = true)) {
-                resp.status = HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "仅支持FLAC格式的音频文件",
-                    "filePath" to filePath
+                    "message" to "文件路径参数不能为空"
                 )))
                 return
             }
             
             try {
-                // 使用SaltAudioTag库读取FLAC文件的元数据
                 val file = File(filePath)
-                if (!file.exists()) {
+                if (!file.exists() || !file.isFile) {
                     resp.status = HttpServletResponse.SC_NOT_FOUND
                     resp.writer.write(gson.toJson(mapOf(
                         "status" to "error",
-                        "message" to "文件不存在",
-                        "filePath" to filePath
+                        "message" to "文件不存在: $filePath"
                     )))
                     return
                 }
                 
-                if (!file.isFile) {
+                // 检查文件扩展名
+                val extension = file.extension.lowercase()
+                if (!listOf("mp3", "flac", "wav", "ogg", "m4a", "aac").contains(extension)) {
                     resp.status = HttpServletResponse.SC_BAD_REQUEST
                     resp.writer.write(gson.toJson(mapOf(
                         "status" to "error",
-                        "message" to "路径不是有效的文件",
-                        "filePath" to filePath
+                        "message" to "不支持的音频文件格式: $extension"
                     )))
                     return
                 }
                 
-                // 读取音频文件
-                val audioFile = AudioFileIO.read(file)
-                val tag = audioFile.tag
+                // 使用Tika提取歌词
+                val lyrics = extractLyricsFromFile(file)
                 
-                // 尝试从元数据中获取歌词
-                var lyricContent: String? = null
-                
-                if (tag != null) {
-                    // 尝试获取标准歌词字段
-                    lyricContent = tag.getFirst(FieldKey.LYRICS)
-                    
-                    // 如果没有找到专门的歌词字段，尝试从注释中获取
-                    if (lyricContent.isNullOrBlank()) {
-                        lyricContent = tag.getFirst(FieldKey.COMMENT)
-                    }
-                    
-                    // 尝试其他可能存储歌词的字段
-                    if (lyricContent.isNullOrBlank()) {
-                        lyricContent = tag.getFirst(FieldKey.DESCRIPTION)
-                    }
-                }
-                
-                if (lyricContent != null && lyricContent.isNotBlank()) {
+                if (lyrics.isNotBlank()) {
                     val response = mapOf(
                         "status" to "success",
-                        "lyric" to lyricContent,
-                        "source" to "flac_metadata",
-                        "filePath" to filePath
+                        "lyric" to lyrics,
+                        "source" to "file_metadata",
+                        "file" to filePath
                     )
                     resp.writer.write(gson.toJson(response))
                 } else {
                     resp.status = HttpServletResponse.SC_NOT_FOUND
                     resp.writer.write(gson.toJson(mapOf(
                         "status" to "error",
-                        "message" to "未在FLAC文件的元数据中找到歌词",
-                        "filePath" to filePath
+                        "message" to "文件中未找到歌词元数据"
                     )))
                 }
             } catch (e: Exception) {
                 resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "读取FLAC文件元数据失败: ${e.message}",
-                    "filePath" to filePath
+                    "message" to "提取文件歌词失败: ${e.message}"
                 )))
+                e.printStackTrace()
             }
         }
+        
+        /**
+         * 使用Tika从音频文件中提取歌词
+         */
+        private fun extractLyricsFromFile(file: File): String {
+            val metadata = Metadata()
+            val parser = AutoDetectParser()
+            val context = ParseContext()
+            
+            // 使用BodyContentHandler来忽略实际音频内容，只处理元数据
+            val handler = BodyContentHandler(-1) // -1表示无限制
+            
+            FileInputStream(file).use { stream ->
+                parser.parse(stream, handler, metadata, context)
+            }
+            
+            // 尝试从不同元数据字段中查找歌词
+            val lyricFields = listOf(
+                "lyrics", "Lyrics", "LYRICS",
+                "lyric", "Lyric", "LYRIC",
+                "unsynchronised lyrics", "Unsynchronised lyrics", "UNSYNCHRONISED LYRICS",
+                " synchronized lyrics", "Synchronised lyrics", "SYNCHRONISED LYRICS",
+                "xmpDM:lyrics", "XMP-DM:lyrics"
+            )
+            
+            for (field in lyricFields) {
+                val value = metadata.get(field)
+                if (!value.isNullOrBlank()) {
+                    return value
+                }
+            }
+            
+            // 对于MP3文件，尝试查找ID3标签中的歌词
+            if (file.extension.equals("mp3", ignoreCase = true)) {
+                // 尝试查找USLT（非同步歌词）和SYLT（同步歌词）帧
+                val usltLyrics = extractID3Lyrics(metadata, "USLT")
+                if (usltLyrics.isNotBlank()) {
+                    return usltLyrics
+                }
+                
+                val syltLyrics = extractID3Lyrics(metadata, "SYLT")
+                if (syltLyrics.isNotBlank()) {
+                    return syltLyrics
+                }
+            }
+            
+            // 对于FLAC文件，尝试查找Vorbis注释中的歌词
+            if (file.extension.equals("flac", ignoreCase = true)) {
+                // FLAC通常使用"LYRICS"字段
+                val lyrics = metadata.get("LYRICS")
+                if (!lyrics.isNullOrBlank()) {
+                    return lyrics
+                }
+            }
+            
+            return ""
+        }
+        
+        /**
+         * 从ID3标签中提取歌词
+         */
+        private fun extractID3Lyrics(metadata: Metadata, frameId: String): String {
+            // Tika将ID3帧存储为"id3:${frameId}.${description}"格式
+            val framePrefix = "id3:$frameId."
+            
+            val lyricsBuilder = StringBuilder()
+            val names = metadata.names()
+            
+            for (name in names) {
+                if (name.startsWith(framePrefix)) {
+                    val value = metadata.get(name)
+                    if (!value.isNullOrBlank()) {
+                        lyricsBuilder.append(value).append("\n")
+                    }
+                }
+            }
+            
+            return lyricsBuilder.toString().trim()
+        }
     }
+
 
 /**
  * 网易云音乐网络歌词API
@@ -1063,4 +1113,5 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
