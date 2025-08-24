@@ -21,13 +21,13 @@ import java.util.Base64
 import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
-import org.jaudiotagger.audio.AudioFileIO
-import org.jaudiotagger.audio.exceptions.CannotReadException
-import org.jaudiotagger.audio.exceptions.InvalidAudioFrameException
-import org.jaudiotagger.audio.exceptions.ReadOnlyFileException
-import org.jaudiotagger.tag.FieldKey
-import org.jaudiotagger.tag.TagException
-import org.jaudiotagger.tag.id.*
+import net.jaudiotagger.audio.AudioFileIO
+import net.jaudiotagger.audio.exceptions.CannotReadException
+import net.jaudiotagger.audio.exceptions.InvalidAudioFrameException
+import net.jaudiotagger.audio.exceptions.ReadOnlyFileException
+import net.jaudiotagger.tag.FieldKey
+import net.jaudiotagger.tag.TagException
+import net.jaudiotagger.tag.id.*
 import java.io.File
 
 class HttpServer(private val port: Int) {
@@ -1163,4 +1163,5 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
