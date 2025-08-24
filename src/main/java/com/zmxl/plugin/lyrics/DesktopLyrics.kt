@@ -31,6 +31,9 @@ object DesktopLyrics {
     private var lastLyricUrl = ""
     private var lyricCache = mutableMapOf<String, String>()
     
+    // 跟踪当前使用的歌词API
+    private var currentLyricApi = ""
+    
     // 字体设置
     private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
     private var japaneseFont = Font("MS Gothic", Font.BOLD, 24)
@@ -652,7 +655,7 @@ object DesktopLyrics {
             e.printStackTrace()
         }
         
-        val tabbedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
+        val tabedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
             border = EmptyBorder(10, 10, 10, 10)
             background = Color(240, 240, 240)
             font = Font("微软雅黑", Font.PLAIN, 12)
@@ -667,11 +670,11 @@ object DesktopLyrics {
         // 其他设置面板
         val otherPanel = createOtherPanel(dialog)
         
-        tabbedPane.addTab("字体", fontPanel)
-        tabbedPane.addTab("颜色", colorPanel)
-        tabbedPane.addTab("其他", otherPanel)
+        tabedPane.addTab("字体", fontPanel)
+        tabedPane.addTab("颜色", colorPanel)
+        tabedPane.addTab("其他", otherPanel)
         
-        dialog.add(tabbedPane, BorderLayout.CENTER)
+        dialog.add(tabedPane, BorderLayout.CENTER)
         
         // 添加关闭按钮
         val closeButton = JButton("关闭").apply {
@@ -1105,21 +1108,19 @@ object DesktopLyrics {
                 // 重置歌词状态
                 lyricsPanel.resetLyrics()
                 lastLyricUrl = ""
+                currentLyricApi = ""
             }
             
-            // 获取歌词内容（仅在需要时）
-            val lyricContent = if (songChanged || lyricsPanel.parsedLyrics.isEmpty()) {
-                getLyric()
-            } else {
-                null
-            }
+            // 获取歌词内容
+            val lyricContent = getLyric()
             
             // 更新歌词面板
             lyricsPanel.updateContent(
                 title = nowPlaying.title ?: "无歌曲播放",
                 artist = nowPlaying.artist ?: "",
                 position = nowPlaying.position,
-                lyric = lyricContent
+                lyric = lyricContent,
+                isSingleLine = currentLyricApi == "/api/lyricspw"
             )
             
             frame.isVisible = true
@@ -1150,8 +1151,8 @@ object DesktopLyrics {
     
    private fun getLyric(): String? {
     try {
-        // 检查缓存
-        if (currentSongId.isNotEmpty() && lyricCache.containsKey(currentSongId)) {
+        // 检查缓存，但如果是lyricspw，我们不使用缓存，因为每次都可能不同
+        if (currentSongId.isNotEmpty() && lyricCache.containsKey(currentSongId) && currentLyricApi != "/api/lyricspw") {
             return lyricCache[currentSongId]
         }
         
@@ -1187,9 +1188,14 @@ object DesktopLyrics {
                 val lyricResponse = gson.fromJson(response, LyricResponse::class.java)
                 val lyric = lyricResponse.lyric
                 
-                // 更新缓存
+                // 更新缓存和当前API
                 if (lyric != null && currentSongId.isNotEmpty()) {
-                    lyricCache[currentSongId] = lyric
+                    currentLyricApi = endpoint
+                    
+                    // 如果不是lyricspw，则缓存歌词
+                    if (endpoint != "/api/lyricspw") {
+                        lyricCache[currentSongId] = lyric
+                    }
                     return lyric
                 }
                 
@@ -1260,6 +1266,11 @@ class LyricsPanel : JPanel() {
     private var smoothAlpha = 0f
     private var targetAlpha = 0f
     
+    // 单句歌词相关
+    private var isSingleLineMode = false
+    private var singleLineText = ""
+    private var singleLineTimestamp = 0L
+    
     enum class Alignment {
         LEFT, CENTER, RIGHT
     }
@@ -1317,12 +1328,29 @@ class LyricsPanel : JPanel() {
         targetPosition = 0f
         smoothAlpha = 0f
         targetAlpha = 0f
+        isSingleLineMode = false
+        singleLineText = ""
+        singleLineTimestamp = 0L
     }
     
-    fun updateContent(title: String, artist: String, position: Long, lyric: String?) {
+    fun updateContent(title: String, artist: String, position: Long, lyric: String?, isSingleLine: Boolean = false) {
         this.title = title
         this.artist = artist
         this.position = position
+        
+        // 单句歌词模式
+        if (isSingleLine) {
+            isSingleLineMode = true
+            if (lyric != null && lyric.isNotBlank()) {
+                singleLineText = lyric
+                singleLineTimestamp = position
+            }
+            repaint()
+            return
+        }
+        
+        // 标准歌词模式
+        isSingleLineMode = false
         
         // 只有在歌词变化时重新解析
         if (lyric != null && this.lyric != lyric) {
@@ -1417,7 +1445,24 @@ class LyricsPanel : JPanel() {
         // 绘制歌词
         val yPos = height / 2 + 20
         
-        if (parsedLyrics.isNotEmpty()) {
+        if (isSingleLineMode) {
+            // 单句歌词模式 - 直接显示当前歌词
+            if (singleLineText.isNotBlank()) {
+                g2d.color = highlightColor
+                g2d.font = getFontForText(singleLineText)
+                val currentX = getTextXPosition(g2d, singleLineText)
+                
+                // 使用阴影效果
+                if (useShadow) {
+                    g2d.color = Color(0, 0, 0, 150)
+                    g2d.drawString(singleLineText, currentX + 1, yPos + 1)
+                }
+                
+                g2d.color = highlightColor
+                g2d.drawString(singleLineText, currentX, yPos)
+            }
+        } else if (parsedLyrics.isNotEmpty()) {
+            // 标准歌词模式
             // 绘制上一行歌词（淡出）
             if (prevLineIndex in parsedLyrics.indices) {
                 val alpha = (255 * (1 - smoothAlpha)).toInt()
