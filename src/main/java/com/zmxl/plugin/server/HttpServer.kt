@@ -23,8 +23,8 @@ import java.util.Base64
 import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
-import com.moriafly.salt.saltAudioTag.AudioFileIO
-import com.moriafly.salt.saltAudioTag.tag.FieldKey
+import io.github.moriafly.salt.audiotag.AudioFileIO
+import io.github.moriafly.salt.audiotag.tag.FieldKey
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -1063,3 +1063,4 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
