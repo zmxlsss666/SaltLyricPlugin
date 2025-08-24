@@ -332,7 +332,7 @@ class HttpServer(private val port: Int) {
     }
 
     /**
-     * 文件元数据歌词API - 新增的Servlet
+     * 文件元数据歌词API - 增强版本
      */
     class LyricFileServlet : HttpServlet() {
         private val gson = Gson()
@@ -364,47 +364,57 @@ class HttpServer(private val port: Int) {
                 
                 // 检查文件扩展名
                 val extension = file.extension.lowercase()
-                if (!listOf("mp3", "flac", "wav", "ogg", "m4a", "aac").contains(extension)) {
+                val supportedFormats = listOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "wma")
+                if (!supportedFormats.contains(extension)) {
                     resp.status = HttpServletResponse.SC_BAD_REQUEST
                     resp.writer.write(gson.toJson(mapOf(
                         "status" to "error",
-                        "message" to "不支持的音频文件格式: $extension"
+                        "message" to "不支持的音频文件格式: $extension. 支持格式: ${supportedFormats.joinToString()}"
                     )))
                     return
                 }
                 
-                // 使用Tika提取歌词
-                val lyrics = extractLyricsFromFile(file)
+                // 使用Tika提取歌词和元数据
+                val result = extractLyricsAndMetadataFromFile(file)
                 
-                if (lyrics.isNotBlank()) {
+                if (result.lyrics.isNotBlank()) {
                     val response = mapOf(
                         "status" to "success",
-                        "lyric" to lyrics,
+                        "lyric" to result.lyrics,
                         "source" to "file_metadata",
-                        "file" to filePath
+                        "file" to filePath,
+                        "format" to extension,
+                        "metadata" to result.metadata
                     )
                     resp.writer.write(gson.toJson(response))
                 } else {
+                    // 返回所有找到的元数据，帮助调试
+                    val response = mapOf(
+                        "status" to "not_found",
+                        "message" to "文件中未找到歌词元数据",
+                        "file" to filePath,
+                        "format" to extension,
+                        "all_metadata" to result.metadata,
+                        "available_fields" to result.metadata.keys.toList()
+                    )
                     resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "文件中未找到歌词元数据"
-                    )))
+                    resp.writer.write(gson.toJson(response))
                 }
             } catch (e: Exception) {
                 resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "提取文件歌词失败: ${e.message}"
+                    "message" to "提取文件歌词失败: ${e.message}",
+                    "stack_trace" to e.stackTraceToString()
                 )))
                 e.printStackTrace()
             }
         }
         
         /**
-         * 使用Tika从音频文件中提取歌词
+         * 使用Tika从音频文件中提取歌词和元数据
          */
-        private fun extractLyricsFromFile(file: File): String {
+        private fun extractLyricsAndMetadataFromFile(file: File): ExtractionResult {
             val metadata = Metadata()
             val parser = AutoDetectParser()
             val context = ParseContext()
@@ -416,42 +426,90 @@ class HttpServer(private val port: Int) {
                 parser.parse(stream, handler, metadata, context)
             }
             
+            // 收集所有元数据用于调试
+            val allMetadata = mutableMapOf<String, String>()
+            val names = metadata.names()
+            for (name in names) {
+                allMetadata[name] = metadata.get(name) ?: ""
+            }
+            
             // 尝试从不同元数据字段中查找歌词
-            val lyricFields = listOf(
+            val lyrics = findLyricsInMetadata(metadata, file.extension)
+            
+            return ExtractionResult(lyrics, allMetadata)
+        }
+        
+        /**
+         * 在元数据中查找歌词
+         */
+        private fun findLyricsInMetadata(metadata: Metadata, fileExtension: String): String {
+            // 通用的歌词字段
+            val generalLyricFields = listOf(
                 "lyrics", "Lyrics", "LYRICS",
                 "lyric", "Lyric", "LYRIC",
+                "text", "Text", "TEXT",
                 "unsynchronised lyrics", "Unsynchronised lyrics", "UNSYNCHRONISED LYRICS",
-                " synchronized lyrics", "Synchronised lyrics", "SYNCHRONISED LYRICS",
-                "xmpDM:lyrics", "XMP-DM:lyrics"
+                "synchronised lyrics", "Synchronised lyrics", "SYNCHRONISED LYRICS",
+                "xmpDM:lyrics", "XMP-DM:lyrics",
+                "description", "Description", "DESCRIPTION",
+                "comment", "Comment", "COMMENT"
             )
             
-            for (field in lyricFields) {
+            // 格式特定的歌词字段
+            val formatSpecificFields = when (fileExtension.lowercase()) {
+                "mp3" -> listOf(
+                    "id3:USLT", "id3:SYLT", "id3:COMM", "id3:USER",
+                    "id3v1:COMMENT", "id3v2:USLT", "id3v2:SYLT"
+                )
+                "flac" -> listOf(
+                    "vorbis:LYRICS", "vorbis:COMMENT", "vorbis:DESCRIPTION"
+                )
+                "m4a", "aac" -> listOf(
+                    "mp4:lyr", "mp4:©lyr", "mp4:----:com.apple.iTunes:LYRICS"
+                )
+                "wma" -> listOf(
+                    "asf:LYRICS", "asf:WM/Lyrics", "asf:Description"
+                )
+                else -> emptyList()
+            }
+            
+            // 尝试所有可能的字段
+            val allFields = generalLyricFields + formatSpecificFields
+            
+            for (field in allFields) {
                 val value = metadata.get(field)
                 if (!value.isNullOrBlank()) {
+                    println("找到歌词字段: $field = $value")
                     return value
                 }
             }
             
-            // 对于MP3文件，尝试查找ID3标签中的歌词
-            if (file.extension.equals("mp3", ignoreCase = true)) {
-                // 尝试查找USLT（非同步歌词）和SYLT（同步歌词）帧
-                val usltLyrics = extractID3Lyrics(metadata, "USLT")
-                if (usltLyrics.isNotBlank()) {
-                    return usltLyrics
-                }
-                
-                val syltLyrics = extractID3Lyrics(metadata, "SYLT")
-                if (syltLyrics.isNotBlank()) {
-                    return syltLyrics
+            // 对于MP3文件，尝试查找所有ID3标签
+            if (fileExtension.equals("mp3", ignoreCase = true)) {
+                val id3Lyrics = extractAllID3Lyrics(metadata)
+                if (id3Lyrics.isNotBlank()) {
+                    return id3Lyrics
                 }
             }
             
-            // 对于FLAC文件，尝试查找Vorbis注释中的歌词
-            if (file.extension.equals("flac", ignoreCase = true)) {
-                // FLAC通常使用"LYRICS"字段
-                val lyrics = metadata.get("LYRICS")
-                if (!lyrics.isNullOrBlank()) {
-                    return lyrics
+            // 对于FLAC文件，尝试查找所有Vorbis注释
+            if (fileExtension.equals("flac", ignoreCase = true)) {
+                val vorbisLyrics = extractAllVorbisComments(metadata)
+                if (vorbisLyrics.isNotBlank()) {
+                    return vorbisLyrics
+                }
+            }
+            
+            // 尝试查找任何包含"lyric"的字段
+            val names = metadata.names()
+            for (name in names) {
+                if (name.contains("lyric", ignoreCase = true) && 
+                    !name.contains("lyricist", ignoreCase = true)) {
+                    val value = metadata.get(name)
+                    if (!value.isNullOrBlank()) {
+                        println("找到包含lyric的字段: $name = $value")
+                        return value
+                    }
                 }
             }
             
@@ -459,29 +517,56 @@ class HttpServer(private val port: Int) {
         }
         
         /**
-         * 从ID3标签中提取歌词
+         * 从所有ID3标签中提取歌词
          */
-        private fun extractID3Lyrics(metadata: Metadata, frameId: String): String {
-            // Tika将ID3帧存储为"id3:${frameId}.${description}"格式
-            val framePrefix = "id3:$frameId."
-            
+        private fun extractAllID3Lyrics(metadata: Metadata): String {
             val lyricsBuilder = StringBuilder()
             val names = metadata.names()
             
             for (name in names) {
-                if (name.startsWith(framePrefix)) {
+                if (name.startsWith("id3:") && 
+                    (name.contains("USLT", ignoreCase = true) || 
+                     name.contains("SYLT", ignoreCase = true) ||
+                     name.contains("COMM", ignoreCase = true))) {
                     val value = metadata.get(name)
                     if (!value.isNullOrBlank()) {
                         lyricsBuilder.append(value).append("\n")
+                        println("找到ID3歌词字段: $name = $value")
                     }
                 }
             }
             
             return lyricsBuilder.toString().trim()
         }
+        
+        /**
+         * 从所有Vorbis注释中提取歌词
+         */
+        private fun extractAllVorbisComments(metadata: Metadata): String {
+            val lyricsBuilder = StringBuilder()
+            val names = metadata.names()
+            
+            for (name in names) {
+                if (name.startsWith("vorbis:") && 
+                    (name.contains("LYRICS", ignoreCase = true) || 
+                     name.contains("COMMENT", ignoreCase = true))) {
+                    val value = metadata.get(name)
+                    if (!value.isNullOrBlank()) {
+                        lyricsBuilder.append(value).append("\n")
+                        println("找到Vorbis歌词字段: $name = $value")
+                    }
+                }
+            }
+            
+            return lyricsBuilder.toString().trim()
+        }
+        
+        /**
+         * 提取结果数据类
+         */
+        data class ExtractionResult(val lyrics: String, val metadata: Map<String, String>)
     }
-
-
+    
 /**
  * 网易云音乐网络歌词API
  */
@@ -1113,5 +1198,6 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
