@@ -17,6 +17,7 @@ dependencies {
     // SPW API
     compileOnly("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
     kapt("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
+    implementation("io.github.moriafly:salt-audiotag:0.1.0-dev12")
     
     // Jetty HTTP服务器
     implementation("org.eclipse.jetty:jetty-server:11.0.15")
@@ -66,3 +67,4 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
