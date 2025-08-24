@@ -55,6 +55,7 @@ class HttpServer(private val port: Int) {
         
         context.addServlet(ServletHolder(PicServlet()), "/api/pic")
         context.addServlet(ServletHolder(CurrentPositionServlet()), "/api/current-position")
+        context.addServlet(ServletHolder(MusicServlet()), "/api/music") // 新增：获取文件路径API
 
         // 处理所有其他请求，返回控制界面
         context.addServlet(ServletHolder(object : HttpServlet() {
@@ -930,6 +931,45 @@ class LyricKugouServlet : HttpServlet() {
     }
 
     /**
+     * 获取当前播放媒体文件路径API
+     */
+    class MusicServlet : HttpServlet() {
+        @Throws(IOException::class)
+        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+            resp.contentType = "application/json;charset=UTF-8"
+            
+            val media = PlaybackStateHolder.currentMedia
+            if (media == null) {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "没有当前媒体信息"
+                )))
+                return
+            }
+            
+            try {
+                val response = mapOf(
+                    "status" to "success",
+                    "path" to media.path,
+                    "title" to media.title,
+                    "artist" to media.artist,
+                    "album" to media.album,
+                    "albumArtist" to media.albumArtist
+                )
+                
+                resp.writer.write(Gson().toJson(response))
+            } catch (e: Exception) {
+                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+                resp.writer.write(Gson().toJson(mapOf(
+                    "status" to "error",
+                    "message" to "获取文件路径失败: ${e.message}"
+                )))
+            }
+        }
+    }
+
+    /**
      * 发送系统媒体键事件
      */
     fun sendMediaKeyEvent(virtualKeyCode: Int) {
@@ -954,4 +994,3 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
-
