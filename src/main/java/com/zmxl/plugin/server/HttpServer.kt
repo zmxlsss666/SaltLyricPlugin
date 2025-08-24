@@ -22,7 +22,7 @@ import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 import org.apache.tika.metadata.Metadata
-import org.apache.tika.parser.AutoDetectParser
+import org.apache.tika.parser.AudioParser
 import org.apache.tika.parser.ParseContext
 import org.apache.tika.sax.BodyContentHandler
 import org.xml.sax.ContentHandler
@@ -413,7 +413,7 @@ class HttpServer(private val port: Int) {
          */
         private fun extractLyricsFromFile(file: File): String {
             val metadata = Metadata()
-            val parser = org.apache.tika.parser.audio.AudioParser()
+            val parser = AudioParser()
             val context = ParseContext()
             
             // 使用BodyContentHandler来忽略实际音频内容，只处理元数据
@@ -1137,6 +1137,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
