@@ -340,17 +340,7 @@ class HttpServer(private val port: Int) {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-            
-            val filePath = req.getParameter("path")
-            if (filePath.isNullOrBlank()) {
-                resp.status = HttpServletResponse.SC_BAD_REQUEST
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "文件路径参数不能为空"
-                )))
-                return
-            }
-            
+            var filePath = currentMedia.path   
             try {
                 val file = File(filePath)
                 if (!file.exists() || !file.isFile) {
@@ -1195,6 +1185,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
