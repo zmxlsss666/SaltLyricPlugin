@@ -13,7 +13,7 @@ kotlin {
     jvmToolchain(21)
 }
 
-
+val kotlinVersion = "2.2.0"
 
 dependencies {
     // SPW API
@@ -59,6 +59,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
