@@ -332,7 +332,7 @@ class HttpServer(private val port: Int) {
     }
 
     /**
-     * 文件元数据歌词API - 增强版本
+     * 文件元数据歌词API
      */
     class LyricFileServlet : HttpServlet() {
         private val gson = Gson()
@@ -364,7 +364,7 @@ class HttpServer(private val port: Int) {
                 
                 // 检查文件扩展名
                 val extension = file.extension.lowercase()
-                val supportedFormats = listOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "wma")
+                val supportedFormats = listOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "opus")
                 if (!supportedFormats.contains(extension)) {
                     resp.status = HttpServletResponse.SC_BAD_REQUEST
                     resp.writer.write(gson.toJson(mapOf(
@@ -430,7 +430,11 @@ class HttpServer(private val port: Int) {
             val allMetadata = mutableMapOf<String, String>()
             val names = metadata.names()
             for (name in names) {
-                allMetadata[name] = metadata.get(name) ?: ""
+                val values = metadata.getValues(name)
+                if (values.isNotEmpty()) {
+                    // 对于多值字段，使用逗号分隔
+                    allMetadata[name] = values.joinToString(" | ")
+                }
             }
             
             // 尝试从不同元数据字段中查找歌词
@@ -459,16 +463,25 @@ class HttpServer(private val port: Int) {
             val formatSpecificFields = when (fileExtension.lowercase()) {
                 "mp3" -> listOf(
                     "id3:USLT", "id3:SYLT", "id3:COMM", "id3:USER",
-                    "id3v1:COMMENT", "id3v2:USLT", "id3v2:SYLT"
+                    "id3v1:COMMENT", "id3v2:USLT", "id3v2:SYLT",
+                    "id3:USLT:eng", "id3:USLT:eng:description", // 英语歌词
+                    "id3:SYLT:eng", "id3:SYLT:eng:description"  // 英语同步歌词
                 )
                 "flac" -> listOf(
-                    "vorbis:LYRICS", "vorbis:COMMENT", "vorbis:DESCRIPTION"
+                    "vorbis:LYRICS", "vorbis:COMMENT", "vorbis:DESCRIPTION",
+                    "flac:lyrics", "flac:comment", "flac:description"
                 )
                 "m4a", "aac" -> listOf(
-                    "mp4:lyr", "mp4:©lyr", "mp4:----:com.apple.iTunes:LYRICS"
+                    "mp4:lyr", "mp4:©lyr", "mp4:----:com.apple.iTunes:LYRICS",
+                    "itunes:lyrics", "itunes:LYR"
                 )
                 "wma" -> listOf(
-                    "asf:LYRICS", "asf:WM/Lyrics", "asf:Description"
+                    "asf:LYRICS", "asf:WM/Lyrics", "asf:Description",
+                    "wm:lyrics", "wm:LYR"
+                )
+                "ogg", "opus" -> listOf(
+                    "vorbis:LYRICS", "vorbis:COMMENT", "vorbis:DESCRIPTION",
+                    "ogg:lyrics", "ogg:comment", "ogg:description"
                 )
                 else -> emptyList()
             }
@@ -477,10 +490,13 @@ class HttpServer(private val port: Int) {
             val allFields = generalLyricFields + formatSpecificFields
             
             for (field in allFields) {
-                val value = metadata.get(field)
-                if (!value.isNullOrBlank()) {
-                    println("找到歌词字段: $field = $value")
-                    return value
+                val values = metadata.getValues(field)
+                if (values.isNotEmpty()) {
+                    val value = values.joinToString("\n")
+                    if (value.isNotBlank()) {
+                        println("找到歌词字段: $field = $value")
+                        return value
+                    }
                 }
             }
             
@@ -505,10 +521,13 @@ class HttpServer(private val port: Int) {
             for (name in names) {
                 if (name.contains("lyric", ignoreCase = true) && 
                     !name.contains("lyricist", ignoreCase = true)) {
-                    val value = metadata.get(name)
-                    if (!value.isNullOrBlank()) {
-                        println("找到包含lyric的字段: $name = $value")
-                        return value
+                    val values = metadata.getValues(name)
+                    if (values.isNotEmpty()) {
+                        val value = values.joinToString("\n")
+                        if (value.isNotBlank()) {
+                            println("找到包含lyric的字段: $name = $value")
+                            return value
+                        }
                     }
                 }
             }
@@ -528,8 +547,9 @@ class HttpServer(private val port: Int) {
                     (name.contains("USLT", ignoreCase = true) || 
                      name.contains("SYLT", ignoreCase = true) ||
                      name.contains("COMM", ignoreCase = true))) {
-                    val value = metadata.get(name)
-                    if (!value.isNullOrBlank()) {
+                    val values = metadata.getValues(name)
+                    if (values.isNotEmpty()) {
+                        val value = values.joinToString("\n")
                         lyricsBuilder.append(value).append("\n")
                         println("找到ID3歌词字段: $name = $value")
                     }
@@ -550,8 +570,9 @@ class HttpServer(private val port: Int) {
                 if (name.startsWith("vorbis:") && 
                     (name.contains("LYRICS", ignoreCase = true) || 
                      name.contains("COMMENT", ignoreCase = true))) {
-                    val value = metadata.get(name)
-                    if (!value.isNullOrBlank()) {
+                    val values = metadata.getValues(name)
+                    if (values.isNotEmpty()) {
+                        val value = values.joinToString("\n")
                         lyricsBuilder.append(value).append("\n")
                         println("找到Vorbis歌词字段: $name = $value")
                     }
@@ -566,6 +587,7 @@ class HttpServer(private val port: Int) {
          */
         data class ExtractionResult(val lyrics: String, val metadata: Map<String, String>)
     }
+
     
 /**
  * 网易云音乐网络歌词API
@@ -1198,6 +1220,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
