@@ -31,9 +31,11 @@ import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.Tag
 import org.jaudiotagger.tag.TagException
 import org.jaudiotagger.tag.id3.ID3v1Tag
-import org.jaudiotagger.tag.id3.ID3v23Tag  // 修正ID3v2Tag的导入，使用具体版本的类
+import org.jaudiotagger.tag.id3.ID3v23Tag
 import org.jaudiotagger.tag.id3.framebody.FrameBodySYLT
 import org.jaudiotagger.tag.id3.framebody.FrameBodyUSLT
+import org.jaudiotagger.tag.id3.ID3v2Tag
+import org.jaudiotagger.tag.id3.FrameID
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -429,23 +431,21 @@ class HttpServer(private val port: Int) {
         
         // 读取MP3文件中的特定歌词字段
         private fun readMp3SpecificLyrics(audioFile: AudioFile): String? {
-            // 尝试从ID3v2标签获取，使用具体的版本类ID3v23Tag
+            // 尝试从ID3v2标签获取
             val id3v2Tag = audioFile.tag as? ID3v23Tag
             if (id3v2Tag != null) {
-                // 尝试从非同步歌词帧获取
-                val usltFrames = id3v2Tag.getFrames(FrameBodyUSLT::class.java)
+                // 尝试从非同步歌词帧(USLT)获取
+                val usltFrames = id3v2Tag.getFrameList(FrameID.USLT)
                 if (usltFrames.isNotEmpty()) {
                     val usltFrame = usltFrames[0].body as FrameBodyUSLT
-                    // 使用getLyrics()方法替代直接访问lyrics属性
-                    return usltFrame.lyrics ?: usltFrame.getLyrics()
+                    return usltFrame.lyric ?: ""
                 }
                 
-                // 尝试从同步歌词帧获取
-                val syltFrames = id3v2Tag.getFrames(FrameBodySYLT::class.java)
+                // 尝试从同步歌词帧(SYLT)获取
+                val syltFrames = id3v2Tag.getFrameList(FrameID.SYLT)
                 if (syltFrames.isNotEmpty()) {
                     val syltFrame = syltFrames[0].body as FrameBodySYLT
-                    // 使用getText()方法替代直接访问text属性
-                    return syltFrame.text?.joinToString("\n") ?: syltFrame.getText()?.joinToString("\n")
+                    return syltFrame.textRepresentation ?: ""
                 }
             }
             
