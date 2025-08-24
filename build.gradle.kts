@@ -1,7 +1,7 @@
 plugins {
     id("java-library")
-    kotlin("jvm") version "1.9.22"
-    kotlin("kapt") version "1.9.22"
+    kotlin("jvm") version "2.1.0"
+    kotlin("kapt") version "2.1.0"
 }
 
 java {
@@ -62,5 +62,6 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
