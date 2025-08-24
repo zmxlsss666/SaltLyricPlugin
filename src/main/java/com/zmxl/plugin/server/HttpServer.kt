@@ -22,7 +22,7 @@ import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 import org.apache.tika.metadata.Metadata
-import org.apache.tika.parser.AudioParser
+import org.apache.tika.parser.audio.AudioParser
 import org.apache.tika.parser.ParseContext
 import org.apache.tika.sax.BodyContentHandler
 import org.xml.sax.ContentHandler
@@ -1137,6 +1137,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
