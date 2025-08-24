@@ -48,6 +48,13 @@ object DesktopLyrics {
     private lateinit var settingsButton: JButton
     private lateinit var minimizeButton: JButton
     
+    // 滚动文本相关
+    private var scrollOffset = 0
+    private var scrollDirection = 1
+    private var scrollTimer: Timer? = null
+    private var scrollText = ""
+    private var maxTextWidth = 0
+    
     // 毛玻璃效果相关
     private var backgroundAlpha = 0f
     private val backgroundTimer = Timer(16) {
@@ -103,6 +110,7 @@ object DesktopLyrics {
     fun stop() {
         timer.stop()
         backgroundTimer.stop()
+        scrollTimer?.stop()
         disableAcrylicEffect()
         frame.dispose()
     }
@@ -243,9 +251,9 @@ object DesktopLyrics {
                     if (!isLocked) {
                         // 只有当鼠标不在控制面板上时才隐藏
                         try {
-                            val point = MouseInfo.getPointerInfo().location
                             // 修复：检查组件是否已显示在屏幕上
                             if (topPanel.isShowing) {
+                                val point = MouseInfo.getPointerInfo().location
                                 val panelBounds = topPanel.bounds
                                 panelBounds.location = topPanel.locationOnScreen
                                 
@@ -331,11 +339,49 @@ object DesktopLyrics {
             border = BorderFactory.createEmptyBorder(2, 10, 2, 10)
             preferredSize = Dimension(frame.width, 30)
             
-            // 左侧歌曲信息
-            titleArtistLabel = JLabel("", SwingConstants.LEFT).apply {
+            // 左侧歌曲信息 - 使用固定宽度的面板
+            val infoPanel = JPanel(BorderLayout()).apply {
+                background = Color(0, 0, 0, 0) // 透明背景
+                preferredSize = Dimension((frame.width * 0.25).toInt(), 30) // 固定为控制栏宽度的1/4
+            }
+            
+            // 自定义标签实现滚动效果
+            titleArtistLabel = object : JLabel() {
+                override fun paintComponent(g: Graphics) {
+                    val g2 = g as Graphics2D
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+                    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+                    
+                    // 设置字体和颜色
+                    g2.font = Font("微软雅黑", Font.PLAIN, 12)
+                    g2.color = Color.WHITE
+                    
+                    // 获取文本宽度
+                    val fm = g2.fontMetrics
+                    val textWidth = fm.stringWidth(text)
+                    
+                    // 如果文本宽度超过面板宽度，启用滚动效果
+                    if (textWidth > width) {
+                        // 计算滚动位置
+                        val scrollX = -scrollOffset
+                        
+                        // 绘制文本
+                        g2.drawString(text, scrollX, fm.ascent + (height - fm.height) / 2)
+                        
+                        // 绘制文本的副本以实现循环滚动
+                        g2.drawString(text, scrollX + textWidth + 20, fm.ascent + (height - fm.height) / 2)
+                    } else {
+                        // 文本宽度足够，居中显示
+                        g2.drawString(text, (width - textWidth) / 2, fm.ascent + (height - fm.height) / 2)
+                    }
+                }
+            }.apply {
                 foreground = Color.WHITE
                 font = Font("微软雅黑", Font.PLAIN, 12)
+                horizontalAlignment = SwingConstants.LEFT
             }
+            
+            infoPanel.add(titleArtistLabel, BorderLayout.CENTER)
             
             // 中间控制按钮
             val controlPanel = JPanel(FlowLayout(FlowLayout.CENTER, 5, 0)).apply {
@@ -389,9 +435,18 @@ object DesktopLyrics {
                 add(minimizeButton)
             }
             
-            add(titleArtistLabel, BorderLayout.WEST)
+            add(infoPanel, BorderLayout.WEST)
             add(controlPanel, BorderLayout.CENTER)
             add(rightPanel, BorderLayout.EAST)
+            
+            // 添加组件监听器，当面板大小改变时更新信息面板大小
+            addComponentListener(object : ComponentAdapter() {
+                override fun componentResized(e: ComponentEvent) {
+                    infoPanel.preferredSize = Dimension((width * 0.25).toInt(), 30)
+                    revalidate()
+                    repaint()
+                }
+            })
         }
     }
     
@@ -425,12 +480,17 @@ object DesktopLyrics {
         if (isLocked) {
             lockButton.text = "🔒"
             topPanel.isVisible = false
+            scrollTimer?.stop()
             disableAcrylicEffect()
         } else {
             lockButton.text = "🔓"
             // 解锁后，如果鼠标在窗口内，启用毛玻璃效果
             if (frame.mousePosition != null) {
                 enableAcrylicEffect(200)
+            }
+            // 如果文本需要滚动，重新启动滚动计时器
+            if (scrollText.isNotEmpty()) {
+                startScrollTimer()
             }
         }
     }
@@ -443,6 +503,50 @@ object DesktopLyrics {
         }
         
         titleArtistLabel.text = displayText
+        
+        // 检查文本是否需要滚动
+        val fm = titleArtistLabel.getFontMetrics(titleArtistLabel.font)
+        val textWidth = fm.stringWidth(displayText)
+        val panelWidth = (topPanel.width * 0.25).toInt()
+        
+        // 停止之前的滚动计时器
+        scrollTimer?.stop()
+        
+        if (textWidth > panelWidth) {
+            // 文本需要滚动
+            scrollText = displayText
+            scrollOffset = 0
+            scrollDirection = 1
+            startScrollTimer()
+        } else {
+            scrollText = ""
+        }
+    }
+    
+    private fun startScrollTimer() {
+        scrollTimer?.stop()
+        scrollTimer = Timer(20) {
+            val fm = titleArtistLabel.getFontMetrics(titleArtistLabel.font)
+            val textWidth = fm.stringWidth(scrollText)
+            val panelWidth = (topPanel.width * 0.25).toInt()
+            
+            if (scrollDirection == 1) {
+                // 向右滚动
+                scrollOffset += 2
+                if (scrollOffset > textWidth + 20) {
+                    scrollOffset = -panelWidth
+                }
+            } else {
+                // 向左滚动
+                scrollOffset -= 2
+                if (scrollOffset < -textWidth - 20) {
+                    scrollOffset = panelWidth
+                }
+            }
+            
+            titleArtistLabel.repaint()
+        }
+        scrollTimer?.start()
     }
     
     private fun setupKeyboardShortcuts() {
