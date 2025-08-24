@@ -880,6 +880,7 @@ class LyricKugouServlet : HttpServlet() {
 
 /**
  * 从音频文件元数据中读取歌词API - 使用Apache Tika
+ * 如果没有提供path参数，则使用当前播放的媒体文件路径
  */
 class LyricFromFileServlet : HttpServlet() {
     private val gson = Gson()
@@ -888,16 +889,22 @@ class LyricFromFileServlet : HttpServlet() {
     override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
         resp.contentType = "application/json;charset=UTF-8"
         
-        // 获取文件路径参数
-        val filePath = req.getParameter("path")
+        // 获取文件路径参数，如果没有提供则使用当前播放的媒体文件路径
+        var filePath = req.getParameter("path")
         
+        // 如果没有提供path参数，尝试使用当前播放的媒体文件路径
         if (filePath.isNullOrBlank()) {
-            resp.status = HttpServletResponse.SC_BAD_REQUEST
-            resp.writer.write(gson.toJson(mapOf(
-                "status" to "error",
-                "message" to "缺少文件路径参数"
-            )))
-            return
+            val currentMedia = PlaybackStateHolder.currentMedia
+            if (currentMedia != null && currentMedia.path.isNotBlank()) {
+                filePath = currentMedia.path
+            } else {
+                resp.status = HttpServletResponse.SC_BAD_REQUEST
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "缺少文件路径参数且没有当前播放的媒体文件"
+                )))
+                return
+            }
         }
         
         try {
@@ -1053,7 +1060,6 @@ class LyricFromFileServlet : HttpServlet() {
         return lyricsBuilder.toString().trim()
     }
 }
-
     /**
      * 封面图片API
      */
@@ -1183,4 +1189,5 @@ class LyricFromFileServlet : HttpServlet() {
         }
     }
 }
+
 
