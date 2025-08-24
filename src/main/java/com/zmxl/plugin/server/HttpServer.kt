@@ -878,187 +878,181 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 
-    /**
-     * 从音频文件元数据中读取歌词API - 使用Apache Tika
-     */
-    class LyricFromFileServlet : HttpServlet() {
-        private val gson = Gson()
+/**
+ * 从音频文件元数据中读取歌词API - 使用Apache Tika
+ */
+class LyricFromFileServlet : HttpServlet() {
+    private val gson = Gson()
+    
+    @Throws(IOException::class)
+    override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+        resp.contentType = "application/json;charset=UTF-8"
         
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
+        // 获取文件路径参数
+        val filePath = req.getParameter("path")
+        
+        if (filePath.isNullOrBlank()) {
+            resp.status = HttpServletResponse.SC_BAD_REQUEST
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "缺少文件路径参数"
+            )))
+            return
+        }
+        
+        try {
+            // 读取音频文件元数据中的歌词
+            val lyricContent = extractLyricsFromAudioFile(filePath)
             
-            // 获取文件路径参数
-            val filePath = req.getParameter("path")
-            
-            if (filePath.isNullOrBlank()) {
-                resp.status = HttpServletResponse.SC_BAD_REQUEST
+            if (lyricContent != null && lyricContent.isNotBlank()) {
+                val response = mapOf(
+                    "status" to "success",
+                    "lyric" to lyricContent,
+                    "source" to "file_metadata",
+                    "filePath" to filePath
+                )
+                resp.writer.write(gson.toJson(response))
+            } else {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "缺少文件路径参数"
-                )))
-                return
-            }
-            
-            try {
-                // 读取音频文件元数据中的歌词
-                val lyricContent = extractLyricsFromAudioFile(filePath)
-                
-                if (lyricContent != null && lyricContent.isNotBlank()) {
-                    val response = mapOf(
-                        "status" to "success",
-                        "lyric" to lyricContent,
-                        "source" to "file_metadata",
-                        "filePath" to filePath
-                    )
-                    resp.writer.write(gson.toJson(response))
-                } else {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "未找到文件中的歌词数据",
-                        "filePath" to filePath
-                    )))
-                }
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "读取文件歌词失败: ${e.message}",
+                    "message" to "未找到文件中的歌词数据",
                     "filePath" to filePath
                 )))
             }
-        }
-        
-        /**
-         * 从音频文件中提取歌词 - 使用Apache Tika
-         */
-        private fun extractLyricsFromAudioFile(filePath: String): String? {
-            val file = File(filePath)
-            if (!file.exists() || !file.isFile) {
-                throw IOException("文件不存在或不是有效文件: $filePath")
-            }
-            
-            var inputStream: FileInputStream? = null
-            try {
-                inputStream = FileInputStream(file)
-                
-                // 创建Tika解析器
-                val tika = Tika()
-                
-                // 设置Tika配置，启用所有解析器
-                val config = TikaConfig.getDefaultConfig()
-                val detector = DefaultDetector(config)
-                val parser = AutoDetectParser(config, detector)
-                
-                // 创建内容处理程序
-                val handler = BodyContentHandler(-1) // -1表示无限制
-                
-                // 创建元数据对象
-                val metadata = Metadata()
-                
-                // 创建解析上下文
-                val context = ParseContext()
-                context.set(Parser::class.java, parser)
-                
-                // 解析文件
-                parser.parse(inputStream, handler, metadata, context)
-                
-                // 尝试从元数据中提取歌词
-                val lyrics = extractLyricsFromMetadata(metadata, handler.toString())
-                
-                return if (lyrics.isNotBlank()) lyrics else null
-            } catch (e: Exception) {
-                throw IOException("读取文件时发生错误: ${e.message}")
-            } finally {
-                try {
-                    inputStream?.close()
-                } catch (e: IOException) {
-                    // 忽略关闭异常
-                }
-            }
-        }
-        
-        /**
-         * 从Tika元数据中提取歌词
-         */
-        private fun extractLyricsFromMetadata(metadata: Metadata, content: String): String {
-            val lyricsBuilder = StringBuilder()
-            
-            // 尝试从标准元数据字段中提取歌词
-            val potentialLyricFields = listOf(
-                "lyrics", "LYRICS", "Lyrics",
-                "text", "TEXT", "Text",
-                "comment", "COMMENT", "Comment",
-                "description", "DESCRIPTION", "Description",
-                "xmpDM:lyrics", "xmpDM:comment",
-                "chapters", "CHAPTERS",
-                "unsynchronised_lyric", "SYLT",
-                "id3v2.3.lyrics", "id3v2.4.lyrics"
-            )
-            
-            // 检查所有可能的歌词字段
-            for (field in potentialLyricFields) {
-                val values = metadata.getValues(field)
-                if (values.isNotEmpty()) {
-                    for (value in values) {
-                        if (value.isNotBlank() && !value.contains("unknown", ignoreCase = true)) {
-                            lyricsBuilder.append(value).append("\n")
-                        }
-                    }
-                }
-            }
-            
-            // 如果没有找到明确的歌词字段，检查所有元数据字段
-            if (lyricsBuilder.isEmpty()) {
-                val allNames = metadata.names()
-                for (name in allNames) {
-                    // 跳过明显不是歌词的字段
-                    if (name.contains("date", ignoreCase = true) ||
-                        name.contains("time", ignoreCase = true) ||
-                        name.contains("duration", ignoreCase = true) ||
-                        name.contains("bitrate", ignoreCase = true) ||
-                        name.contains("sample", ignoreCase = true) ||
-                        name.contains("channel", ignoreCase = true) ||
-                        name.contains("format", ignoreCase = true) ||
-                        name.contains("encoder", ignoreCase = true) ||
-                        name.contains("size", ignoreCase = true)) {
-                        continue
-                    }
-                    
-                    val values = metadata.getValues(name)
-                    for (value in values) {
-                        // 检查值是否可能是歌词（包含时间戳或较长文本）
-                        if (value.isNotBlank() && 
-                            (value.contains("[") && value.contains("]") || // 可能包含时间戳
-                             value.length > 100 || // 较长文本可能是歌词
-                             value.contains("\n") || // 包含换行符
-                             value.contains("verse", ignoreCase = true) || // 包含歌词相关术语
-                             value.contains("chorus", ignoreCase = true) ||
-                             value.contains("bridge", ignoreCase = true))) {
-                            lyricsBuilder.append("[").append(name).append("]: ").append(value).append("\n")
-                        }
-                    }
-                }
-            }
-            
-            // 如果元数据中没有找到歌词，但内容中有文本，尝试提取
-            if (lyricsBuilder.isEmpty() && content.isNotBlank()) {
-                // 检查内容是否可能是歌词（包含时间戳或歌词结构）
-                if (content.contains("[") && content.contains("]") && 
-                    (content.contains(":") || content.contains("."))) {
-                    // 可能已经是LRC格式的歌词
-                    lyricsBuilder.append(content)
-                } else if (content.length > 200 && 
-                          (content.contains("\n") || content.contains("\r"))) {
-                    // 可能是纯文本歌词
-                    lyricsBuilder.append(content)
-                }
-            }
-            
-            return lyricsBuilder.toString().trim()
+        } catch (e: Exception) {
+            resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "读取文件歌词失败: ${e.message}",
+                "filePath" to filePath
+            )))
         }
     }
+    
+    /**
+     * 从音频文件中提取歌词 - 使用Apache Tika
+     */
+    private fun extractLyricsFromAudioFile(filePath: String): String? {
+        val file = File(filePath)
+        if (!file.exists() || !file.isFile) {
+            throw IOException("文件不存在或不是有效文件: $filePath")
+        }
+        
+        var inputStream: FileInputStream? = null
+        try {
+            inputStream = FileInputStream(file)
+            
+            // 创建Tika解析器 - 简化版本，避免API不匹配问题
+            val parser = AutoDetectParser()
+            
+            // 创建内容处理程序
+            val handler = BodyContentHandler(-1) // -1表示无限制
+            
+            // 创建元数据对象
+            val metadata = Metadata()
+            
+            // 创建解析上下文
+            val context = ParseContext()
+            
+            // 解析文件
+            parser.parse(inputStream, handler, metadata, context)
+            
+            // 尝试从元数据中提取歌词
+            val lyrics = extractLyricsFromMetadata(metadata, handler.toString())
+            
+            return if (lyrics.isNotBlank()) lyrics else null
+        } catch (e: Exception) {
+            throw IOException("读取文件时发生错误: ${e.message}")
+        } finally {
+            try {
+                inputStream?.close()
+            } catch (e: IOException) {
+                // 忽略关闭异常
+            }
+        }
+    }
+    
+    /**
+     * 从Tika元数据中提取歌词
+     */
+    private fun extractLyricsFromMetadata(metadata: Metadata, content: String): String {
+        val lyricsBuilder = StringBuilder()
+        
+        // 尝试从标准元数据字段中提取歌词
+        val potentialLyricFields = listOf(
+            "lyrics", "LYRICS", "Lyrics",
+            "text", "TEXT", "Text",
+            "comment", "COMMENT", "Comment",
+            "description", "DESCRIPTION", "Description",
+            "xmpDM:lyrics", "xmpDM:comment",
+            "chapters", "CHAPTERS",
+            "unsynchronised_lyric", "SYLT",
+            "id3v2.3.lyrics", "id3v2.4.lyrics"
+        )
+        
+        // 检查所有可能的歌词字段
+        for (field in potentialLyricFields) {
+            val values = metadata.getValues(field)
+            if (values.isNotEmpty()) {
+                for (value in values) {
+                    if (value.isNotBlank() && !value.contains("unknown", ignoreCase = true)) {
+                        lyricsBuilder.append(value).append("\n")
+                    }
+                }
+            }
+        }
+        
+        // 如果没有找到明确的歌词字段，检查所有元数据字段
+        if (lyricsBuilder.isEmpty()) {
+            val allNames = metadata.names()
+            for (name in allNames) {
+                // 跳过明显不是歌词的字段
+                if (name.contains("date", ignoreCase = true) ||
+                    name.contains("time", ignoreCase = true) ||
+                    name.contains("duration", ignoreCase = true) ||
+                    name.contains("bitrate", ignoreCase = true) ||
+                    name.contains("sample", ignoreCase = true) ||
+                    name.contains("channel", ignoreCase = true) ||
+                    name.contains("format", ignoreCase = true) ||
+                    name.contains("encoder", ignoreCase = true) ||
+                    name.contains("size", ignoreCase = true)) {
+                    continue
+                }
+                
+                val values = metadata.getValues(name)
+                for (value in values) {
+                    // 检查值是否可能是歌词（包含时间戳或较长文本）
+                    if (value.isNotBlank() && 
+                        (value.contains("[") && value.contains("]") || // 可能包含时间戳
+                         value.length > 100 || // 较长文本可能是歌词
+                         value.contains("\n") || // 包含换行符
+                         value.contains("verse", ignoreCase = true) || // 包含歌词相关术语
+                         value.contains("chorus", ignoreCase = true) ||
+                         value.contains("bridge", ignoreCase = true))) {
+                        lyricsBuilder.append("[").append(name).append("]: ").append(value).append("\n")
+                    }
+                }
+            }
+        }
+        
+        // 如果元数据中没有找到歌词，但内容中有文本，尝试提取
+        if (lyricsBuilder.isEmpty() && content.isNotBlank()) {
+            // 检查内容是否可能是歌词（包含时间戳或歌词结构）
+            if (content.contains("[") && content.contains("]") && 
+                (content.contains(":") || content.contains("."))) {
+                // 可能已经是LRC格式的歌词
+                lyricsBuilder.append(content)
+            } else if (content.length > 200 && 
+                      (content.contains("\n") || content.contains("\r"))) {
+                // 可能是纯文本歌词
+                lyricsBuilder.append(content)
+            }
+        }
+        
+        return lyricsBuilder.toString().trim()
+    }
+}
 
     /**
      * 封面图片API
@@ -1189,3 +1183,4 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
