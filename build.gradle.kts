@@ -33,14 +33,13 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     
     // 音频文件元数据解析
-    implementation("org.apache.tika:tika-core:2.9.1")
     implementation("com.drewnoakes:metadata-extractor:2.18.0")
     
     // FLAC文件解析
-    implementation("com.googlecode.soundlibs:flac:1.5.2")
+    implementation("org.jflac:jflac:1.5.2")
     
     // MP3文件解析
-    implementation("com.googlecode.soundlibs:mp3spi:1.9.5.4")
+    implementation("com.mpatric:mp3agic:0.9.1")
 }
 val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
 val pluginId = "zmxl-spw-control"
