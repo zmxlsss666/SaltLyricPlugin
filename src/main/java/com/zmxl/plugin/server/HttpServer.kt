@@ -332,7 +332,7 @@ class HttpServer(private val port: Int) {
     }
 
     /**
-     * 文件元数据歌词API - 增强版本，兼容Tika 3.2.2
+     * 歌词API
      */
     class LyricFileServlet : HttpServlet() {
         private val gson = Gson()
@@ -374,47 +374,41 @@ class HttpServer(private val port: Int) {
                     return
                 }
                 
-                // 使用Tika提取歌词和元数据
-                val result = extractLyricsAndMetadataFromFile(file)
+                // 使用Tika提取歌词
+                val lyrics = extractLyricsFromFile(file)
                 
-                if (result.lyrics.isNotBlank()) {
+                if (lyrics.isNotBlank()) {
                     val response = mapOf(
                         "status" to "success",
-                        "lyric" to result.lyrics,
+                        "lyric" to lyrics,
                         "source" to "file_metadata",
                         "file" to filePath,
-                        "format" to extension,
-                        "metadata" to result.metadata
+                        "format" to extension
                     )
                     resp.writer.write(gson.toJson(response))
                 } else {
-                    // 返回所有找到的元数据，帮助调试
-                    val response = mapOf(
-                        "status" to "not_found",
+                    resp.status = HttpServletResponse.SC_NOT_FOUND
+                    resp.writer.write(gson.toJson(mapOf(
+                        "status" to "error",
                         "message" to "文件中未找到歌词元数据",
                         "file" to filePath,
-                        "format" to extension,
-                        "all_metadata" to result.metadata,
-                        "available_fields" to result.metadata.keys.toList()
-                    )
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(response))
+                        "format" to extension
+                    )))
                 }
             } catch (e: Exception) {
                 resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "提取文件歌词失败: ${e.message}",
-                    "stack_trace" to e.stackTraceToString()
+                    "message" to "提取文件歌词失败: ${e.message}"
                 )))
                 e.printStackTrace()
             }
         }
         
         /**
-         * 使用Tika从音频文件中提取歌词和元数据
+         * 使用Tika从音频文件中提取歌词
          */
-        private fun extractLyricsAndMetadataFromFile(file: File): ExtractionResult {
+        private fun extractLyricsFromFile(file: File): String {
             val metadata = Metadata()
             val parser = AutoDetectParser()
             val context = ParseContext()
@@ -426,21 +420,8 @@ class HttpServer(private val port: Int) {
                 parser.parse(stream, handler, metadata, context)
             }
             
-            // 收集所有元数据用于调试
-            val allMetadata = mutableMapOf<String, String>()
-            val names = metadata.names()
-            for (name in names) {
-                val values = metadata.getValues(name)
-                if (values.isNotEmpty()) {
-                    // 对于多值字段，使用逗号分隔
-                    allMetadata[name] = values.joinToString(" | ")
-                }
-            }
-            
             // 尝试从不同元数据字段中查找歌词
-            val lyrics = findLyricsInMetadata(metadata, file.extension)
-            
-            return ExtractionResult(lyrics, allMetadata)
+            return findLyricsInMetadata(metadata, file.extension)
         }
         
         /**
@@ -581,11 +562,6 @@ class HttpServer(private val port: Int) {
             
             return lyricsBuilder.toString().trim()
         }
-        
-        /**
-         * 提取结果数据类
-         */
-        data class ExtractionResult(val lyrics: String, val metadata: Map<String, String>)
     }
     
 /**
@@ -1219,6 +1195,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
