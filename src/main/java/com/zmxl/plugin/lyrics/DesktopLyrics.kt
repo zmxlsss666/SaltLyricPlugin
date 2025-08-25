@@ -349,13 +349,17 @@ object DesktopLyrics {
                     }
                 }
                 
-                override fun mouseReleased(e: MouseEvent) {
-                    if (!isLocked) {
-                        isDragging = false
-                        isResizing = false
-                        frame.cursor = Cursor.getDefaultCursor()
-                    }
-                }
+                    override fun mouseReleased(e: MouseEvent) {
+                            if (!isLocked) {
+                            val wasDraggingOrResizing = isDragging || isResizing
+                            isDragging = false
+                            isResizing = false
+                            frame.cursor = Cursor.getDefaultCursor()
+                            if (wasDraggingOrResizing) {
+                                saveConfig()
+            }
+        }
+    }
                 
                 override fun mouseClicked(e: MouseEvent) {
                     if (e.clickCount == 2 && !isLocked) {
@@ -1796,3 +1800,4 @@ object DesktopLyrics {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
