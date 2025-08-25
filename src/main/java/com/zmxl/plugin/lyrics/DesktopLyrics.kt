@@ -8,7 +8,6 @@ import java.awt.*
 import java.awt.event.*
 import java.awt.image.BufferedImage
 import java.io.BufferedReader
-import java.io.File
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -17,22 +16,13 @@ import javax.swing.border.EmptyBorder
 import kotlin.math.roundToInt
 
 object DesktopLyrics {
-    // 配置文件路径
-    private val configFile = File(System.getProperty("user.home"), ".saltplayer_desktop_lyrics.conf")
-    
-    // 窗口配置
-    private var windowX = -1
-    private var windowY = -1
-    private var windowWidth = 560
-    private var windowHeight = 180
-    
     private val frame = JFrame()
     private val lyricsPanel = LyricsPanel()
     private var isDragging = false
     private var dragStart: Point? = null
     private var resizeStart: Point? = null
     private var isResizing = false
-    private val resizeBorder = 5 // 调整大小的边框宽度
+    private val resizeArea = 8 // 调整大小的区域宽度
     
     private val timer = Timer(10) { updateLyrics() }
     private val gson = Gson()
@@ -70,13 +60,18 @@ object DesktopLyrics {
     private var currentArtist = ""
     
     // 毛玻璃效果相关
-    private var backgroundAlpha = 0.5f // 默认半透明
+    private var backgroundAlpha = 0f
     private val backgroundTimer = Timer(16) {
-        val targetAlpha = if (frame.mousePosition != null && !isLocked) 0.9f else 0.5f
+        val targetAlpha = if (frame.mousePosition != null && !isLocked) 0.9f else 0f
         backgroundAlpha += (targetAlpha - backgroundAlpha) * 0.15f // 更平滑的过渡
         
-        // 始终启用毛玻璃效果，但调整透明度
-        enableAcrylicEffect((backgroundAlpha * 255).roundToInt())
+        if (backgroundAlpha < 0.01f) {
+            // 完全透明时禁用毛玻璃效果
+            disableAcrylicEffect()
+        } else {
+            // 启用毛玻璃效果
+            enableAcrylicEffect((backgroundAlpha * 255).roundToInt())
+        }
         
         frame.repaint()
     }
@@ -111,21 +106,12 @@ object DesktopLyrics {
     }
     
     fun start() {
-        // 加载窗口配置
-        loadWindowConfig()
-        
         setupUI()
         timer.start()
         backgroundTimer.start()
-        
-        // 应用白色毛玻璃效果
-        enableAcrylicEffect((backgroundAlpha * 255).roundToInt())
     }
     
     fun stop() {
-        // 保存窗口配置
-        saveWindowConfig()
-        
         timer.stop()
         backgroundTimer.stop()
         scrollTimer?.stop()
@@ -133,35 +119,7 @@ object DesktopLyrics {
         frame.dispose()
     }
     
-    // 加载窗口配置
-    private fun loadWindowConfig() {
-        if (configFile.exists()) {
-            try {
-                val lines = configFile.readLines()
-                if (lines.size >= 4) {
-                    windowX = lines[0].toInt()
-                    windowY = lines[1].toInt()
-                    windowWidth = lines[2].toInt()
-                    windowHeight = lines[3].toInt()
-                }
-            } catch (e: Exception) {
-                println("加载窗口配置失败: ${e.message}")
-            }
-        }
-    }
-    
-    // 保存窗口配置
-    private fun saveWindowConfig() {
-        try {
-            val location = frame.location
-            val size = frame.size
-            configFile.writeText("${location.x}\n${location.y}\n${size.width}\n${size.height}")
-        } catch (e: Exception) {
-            println("保存窗口配置失败: ${e.message}")
-        }
-    }
-    
-    // 启用Windows毛玻璃效果（白色）
+    // 启用Windows毛玻璃效果
     private fun enableAcrylicEffect(alpha: Int) {
         try {
             // 使用反射获取窗口句柄
@@ -178,7 +136,7 @@ object DesktopLyrics {
             val accent = AccentPolicy()
             accent.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND
             accent.AccentFlags = 2 // 启用窗口边框颜色
-            accent.GradientColor = (alpha shl 24) or 0xFFFFFF // ARGB格式，A=alpha, RGB=白色
+            accent.GradientColor = (alpha shl 24) or 0x000000 // ARGB格式，A=alpha, RGB=黑色
             
             val data = WindowCompositionAttributeData()
             data.Attribute = WCA_ACCENT_POLICY
@@ -190,7 +148,7 @@ object DesktopLyrics {
             println("启用毛玻璃效果失败: ${e.message}")
             // 备用方案：使用半透明背景
             frame.background = Color(
-                255, 255, 255, (alpha / 255f * 180).roundToInt()
+                0, 0, 0, (alpha / 255f * 180).roundToInt()
             )
         }
     }
@@ -221,7 +179,7 @@ object DesktopLyrics {
         } catch (e: Exception) {
             println("禁用毛玻璃效果失败: ${e.message}")
             // 备用方案：恢复透明背景
-            frame.background = Color(255, 255, 255, 0)
+            frame.background = Color(0, 0, 0, 0)
         }
     }
     
@@ -229,7 +187,7 @@ object DesktopLyrics {
         frame.apply {
             title = "Salt Player 桌面歌词"
             isUndecorated = true
-            background = Color(255, 255, 255, 0) // 白色透明背景
+            background = Color(0, 0, 0, 0)
             setAlwaysOnTop(true)
             
             // 关键修复：设置窗口不获取焦点，允许其他程序正常使用
@@ -238,7 +196,7 @@ object DesktopLyrics {
             
             // 创建内容面板
             contentPane = JPanel(BorderLayout()).apply {
-                background = Color(255, 255, 255, 0) // 白色透明背景
+                background = Color(0, 0, 0, 0)
                 isOpaque = false
                 
                 // 添加歌词面板
@@ -250,14 +208,8 @@ object DesktopLyrics {
             }
             
             // 设置窗口大小和位置
-            setSize(windowWidth, windowHeight)
-            
-            // 设置窗口位置，如果之前保存过则使用保存的位置
-            if (windowX != -1 && windowY != -1) {
-                setLocation(windowX, windowY)
-            } else {
-                setLocationRelativeTo(null)
-            }
+            setSize(560, 180)
+            setLocationRelativeTo(null)
             
             // 添加键盘快捷键
             setupKeyboardShortcuts()
@@ -266,11 +218,10 @@ object DesktopLyrics {
             addMouseListener(object : MouseAdapter() {
                 override fun mousePressed(e: MouseEvent) {
                     if (!isLocked) {
-                        val cursorType = getCursorType(e.point)
-                        if (cursorType != Cursor.DEFAULT_CURSOR) {
+                        if (isInResizeArea(e.point)) {
                             isResizing = true
                             resizeStart = e.point
-                            frame.cursor = Cursor.getPredefinedCursor(cursorType)
+                            frame.cursor = Cursor.getPredefinedCursor(Cursor.SE_RESIZE_CURSOR)
                         } else {
                             isDragging = true
                             dragStart = e.point
@@ -331,15 +282,9 @@ object DesktopLyrics {
                         if (isResizing && resizeStart != null) {
                             val dx = e.x - resizeStart!!.x
                             val dy = e.y - resizeStart!!.y
-                            val cursorType = frame.cursor.type
-                            
-                            val newWidth = maxOf(frame.width + (if (cursorType == Cursor.E_RESIZE_CURSOR || cursorType == Cursor.NE_RESIZE_CURSOR || cursorType == Cursor.SE_RESIZE_CURSOR) dx else 0), 300)
-                            val newHeight = maxOf(frame.height + (if (cursorType == Cursor.S_RESIZE_CURSOR || cursorType == Cursor.SE_RESIZE_CURSOR || cursorType == Cursor.SW_RESIZE_CURSOR) dy else 0), 100)
-                            
-                            val newX = if (cursorType == Cursor.W_RESIZE_CURSOR || cursorType == Cursor.NW_RESIZE_CURSOR || cursorType == Cursor.SW_RESIZE_CURSOR) frame.x + dx else frame.x
-                            val newY = if (cursorType == Cursor.N_RESIZE_CURSOR || cursorType == Cursor.NW_RESIZE_CURSOR || cursorType == Cursor.NE_RESIZE_CURSOR) frame.y + dy else frame.y
-                            
-                            setBounds(newX, newY, newWidth, newHeight)
+                            val newWidth = maxOf(frame.width + dx, 300)
+                            val newHeight = maxOf(frame.height + dy, 100)
+                            frame.setSize(newWidth, newHeight)
                             resizeStart = e.point
                         } else if (isDragging && dragStart != null) {
                             val currentLocation = location
@@ -379,36 +324,21 @@ object DesktopLyrics {
         }
     }
     
-    // 获取光标类型基于鼠标位置
-    private fun getCursorType(point: Point): Int {
-        val width = frame.width
-        val height = frame.height
-        
-        val inLeftBorder = point.x <= resizeBorder
-        val inRightBorder = point.x >= width - resizeBorder
-        val inTopBorder = point.y <= resizeBorder
-        val inBottomBorder = point.y >= height - resizeBorder
-        
-        return when {
-            inLeftBorder && inTopBorder -> Cursor.NW_RESIZE_CURSOR
-            inLeftBorder && inBottomBorder -> Cursor.SW_RESIZE_CURSOR
-            inRightBorder && inTopBorder -> Cursor.NE_RESIZE_CURSOR
-            inRightBorder && inBottomBorder -> Cursor.SE_RESIZE_CURSOR
-            inLeftBorder -> Cursor.W_RESIZE_CURSOR
-            inRightBorder -> Cursor.E_RESIZE_CURSOR
-            inTopBorder -> Cursor.N_RESIZE_CURSOR
-            inBottomBorder -> Cursor.S_RESIZE_CURSOR
-            else -> Cursor.DEFAULT_CURSOR
-        }
+    private fun isInResizeArea(point: Point): Boolean {
+        return point.x >= frame.width - resizeArea && point.y >= frame.height - resizeArea
     }
     
     private fun updateCursor(point: Point) {
-        frame.cursor = Cursor.getPredefinedCursor(getCursorType(point))
+        frame.cursor = if (isInResizeArea(point)) {
+            Cursor.getPredefinedCursor(Cursor.SE_RESIZE_CURSOR)
+        } else {
+            Cursor.getDefaultCursor()
+        }
     }
     
     private fun createTopControlBar(): JPanel {
         return JPanel(BorderLayout()).apply {
-            background = Color(255, 255, 255, 100) // 改为半透明深色背景
+            background = Color(30, 30, 30, 200) // 改为半透明深色背景
             isOpaque = true // 设置为不透明以显示背景色
             border = BorderFactory.createEmptyBorder(2, 10, 2, 10)
             preferredSize = Dimension(frame.width, 30)
@@ -1347,7 +1277,7 @@ object DesktopLyrics {
         init {
             background = backgroundColor
             isOpaque = false // 设置为不透明，使背景透明
-            border = BorderFactory.createEmptyBorder(5, 20, 5, 20)
+            border = BorderFactory.createEmptyBorder(5, 20, 5, 20) // 减少上下间距
             
             // 动画定时器 - 使用更平滑的动画
             Timer(10) {
@@ -1696,4 +1626,3 @@ object DesktopLyrics {
         data class LyricLine(val time: Long, val text: String)
     }
     
-
