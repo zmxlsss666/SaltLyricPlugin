@@ -602,9 +602,22 @@ object DesktopLyrics {
                 // 最小化按钮
                 minimizeButton = createControlButton("−").apply {
                     addActionListener { 
+                    // 确保在事件分发线程中执行UI操作
+                        SwingUtilities.invokeLater {
                         frame.isVisible = false
-                    }
+                    if (SystemTray.isSupported()) {
+                        val trayIcons = SystemTray.getSystemTray().trayIcons
+                    if (trayIcons.isNotEmpty()) {
+                    trayIcons[0].displayMessage(
+                        "Salt Player 桌面歌词", 
+                        "歌词窗口已隐藏，点击托盘图标可重新显示",
+                        TrayIcon.MessageType.INFO
+                    )
                 }
+            }
+        }
+    }
+}
                 
                 add(lockButton)
                 add(settingsButton)
@@ -808,7 +821,14 @@ private fun setupSystemTray() {
         }
     })
     
-    trayIcon.addActionListener { frame.isVisible = !frame.isVisible }
+trayIcon.addActionListener { 
+    SwingUtilities.invokeLater {
+        frame.isVisible = !frame.isVisible
+        if (frame.isVisible) {
+            frame.toFront()
+        }
+    }
+}
     
     try {
         tray.add(trayIcon)
@@ -1796,6 +1816,7 @@ private fun setupSystemTray() {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
