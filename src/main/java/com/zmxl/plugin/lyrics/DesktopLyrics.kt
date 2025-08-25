@@ -1159,8 +1159,8 @@ object DesktopLyrics {
         val endpoints = listOf(
             "/api/lyric",
             "/api/lyric163", 
-            "/api/lyricqq",
-            "/api/lyrickugou"
+            "/api/lyrickugou",
+            "/api/lyricqq"
         )
         
         for (endpoint in endpoints) {
@@ -1510,4 +1510,5 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
 
