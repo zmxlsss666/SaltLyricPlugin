@@ -22,12 +22,19 @@ import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 import org.apache.tika.metadata.Metadata
-import org.apache.tika.parser.AutoDetectParser
 import org.apache.tika.parser.ParseContext
 import org.apache.tika.sax.BodyContentHandler
 import org.xml.sax.ContentHandler
 import java.io.File
 import java.io.FileInputStream
+import org.apache.tika.parser.mp3.Mp3Parser
+import org.apache.tika.parser.audio.WaveParser
+import org.apache.tika.parser.audio.AiffParser
+import org.apache.tika.parser.audio.WmaParser
+import org.apache.tika.parser.mp4.MP4Parser
+import org.gagravarr.tika.FlacParser
+import org.gagravarr.tika.OggParser
+import org.gagravarr.tika.OpusParser
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -367,7 +374,7 @@ class HttpServer(private val port: Int) {
                 
                 // 检查文件扩展名
                 val extension = file.extension.lowercase()
-                val supportedFormats = listOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "opus")
+                val supportedFormats = listOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "opus", "aiff")
                 if (!supportedFormats.contains(extension)) {
                     resp.status = HttpServletResponse.SC_BAD_REQUEST
                     resp.writer.write(gson.toJson(mapOf(
@@ -377,7 +384,7 @@ class HttpServer(private val port: Int) {
                     return
                 }
                 
-                // 使用Tika提取歌词
+                // 使用特定解析器提取歌词
                 val lyrics = extractLyricsFromFile(file)
                 
                 if (lyrics.isNotBlank()) {
@@ -409,15 +416,30 @@ class HttpServer(private val port: Int) {
         }
         
         /**
-         * 使用Tika从音频文件中提取歌词
+         * 使用特定解析器从音频文件中提取歌词
          */
         private fun extractLyricsFromFile(file: File): String {
             val metadata = Metadata()
-            val parser = AutoDetectParser()
             val context = ParseContext()
             
             // 使用BodyContentHandler来忽略实际音频内容，只处理元数据
             val handler = BodyContentHandler(-1) // -1表示无限制
+            
+            // 根据文件扩展名选择特定的解析器
+            val parser = when (file.extension.lowercase()) {
+                "mp3" -> Mp3Parser()
+                "flac" -> FlacParser()
+                "wav" -> WaveParser()
+                "aiff" -> AiffParser()
+                "ogg" -> OggParser()
+                "opus" -> OpusParser()
+                "wma" -> WmaParser()
+                "m4a", "aac" -> MP4Parser()
+                else -> {
+                    println("警告: 未知文件格式 ${file.extension}，尝试使用MP3解析器")
+                    Mp3Parser()
+                }
+            }
             
             FileInputStream(file).use { stream ->
                 parser.parse(stream, handler, metadata, context)
@@ -566,6 +588,7 @@ class HttpServer(private val port: Int) {
             return lyricsBuilder.toString().trim()
         }
     }
+    
     
 /**
  * 网易云音乐网络歌词API
@@ -1137,6 +1160,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
