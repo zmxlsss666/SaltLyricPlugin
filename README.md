@@ -110,41 +110,60 @@
 本项目的开发离不开以下开源项目的支持与贡献，在此表示诚挚的感谢：
 *   **Kotlin**
     [https://kotlinlang.org/](https://kotlinlang.org/)
+    
     项目主要开发语言，提供了简洁、安全的编程体验，其 JVM 生态为项目开发提供了坚实基础。
+    
     许可证：[Apache License 2.0](https://github.com/JetBrains/kotlin/blob/master/LICENSE.txt)
 *   **spw-workshop-api**
     [https://github.com/Moriafly/spw-workshop-api](https://github.com/Moriafly/spw-workshop-api)
-    提供 Salt Player 插件开发的核心接口，是本插件与播放器交互的基础。
+    
+    提供 Salt Player For Windows 插件开发的核心接口，是本插件与播放器交互的基础。
+    
     许可证：[Apache License 2.0](https://github.com/Moriafly/spw-workshop-api/blob/main/LICENSE)
 *   **Spark Java**
     [https://github.com/perwendel/spark](https://github.com/perwendel/spark)
+    
     轻量级 Java Web 框架，用于实现本项目的 HTTP 服务及 API 接口，简化了 Web 服务开发流程。
+    
     许可证：[Apache License 2.0](https://github.com/perwendel/spark/blob/master/LICENSE)
 *   **JNA (Java Native Access)**
     [https://github.com/java-native-access/jna](https://github.com/java-native-access/jna)
+    
     提供 Java 与原生代码的交互能力，为本项目实现 Windows 系统媒体控制（如媒体键响应）提供了关键支持。
+    
     许可证：[Apache License 2.0](https://github.com/java-native-access/jna/blob/master/LICENSE)
 *   **Gson**
     [https://github.com/google/gson](https://github.com/google/gson)
+    
     Google 开发的 JSON 处理库，用于 API 接口的请求与响应数据序列化 / 反序列化。
+    
     许可证：[Apache License 2.0](https://github.com/google/gson/blob/master/LICENSE)
 *   **SLF4J**
     [https://www.slf4j.org/](https://www.slf4j.org/)
+    
     简单日志门面，为项目提供统一的日志接口，简化了日志系统的集成与管理。
+    
     许可证：[MIT License](https://www.slf4j.org/license.html)
 *   **Eclipse Jetty**
     [https://www.eclipse.org/jetty/](https://www.eclipse.org/jetty/)
+    
     轻量级 Java Web 服务器，用于支撑本项目的 HTTP 服务运行。
+    
     许可证：[Apache License 2.0](https://www.eclipse.org/jetty/licenses.html)
 *   **Apache Tika**
     [https://tika.apache.org/](https://tika.apache.org/)
+    
     用于文本提取与处理，辅助实现歌词内容的解析与处理。
+    
     许可证：[Apache License 2.0](https://tika.apache.org/license.html)
 *   **Font Awesome**
     [https://fontawesome.com/](https://fontawesome.com/)
+    
     提供丰富的图标资源，美化了 Web 控制界面的视觉呈现。
+    
     许可证：[CC BY 4.0 License](https://fontawesome.com/license)
-如果没有这些优秀的开源项目，本插件无法成功制作。再次感谢以上所有开源项目的开发者及贡献者们的辛勤付出！
+
+如果没有这些优秀的开源项目，本插件无法成功开发。再次感谢以上所有开源项目的开发者及贡献者们的辛勤付出！
 ## 许可证
 本项目采用 [Apache License 2.0](LICENSE) 开源协议。
 详细条款请参见根目录下的 `LICENSE` 文件。使用本项目前，请确保遵守许可条款。
