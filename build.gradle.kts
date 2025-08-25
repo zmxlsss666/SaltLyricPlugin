@@ -28,8 +28,8 @@ dependencies {
     implementation("org.apache.tika:tika-parsers-standard-package:3.2.2")
 }
 val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
-val pluginId = "zmxl-spw-control"
-val pluginVersion = "1.1.0"
+val pluginId = "SaltLyricPlugin"
+val pluginVersion = "2.0.0"
 val pluginProvider = "zmxl"
 
 tasks.named<Jar>("jar") {
@@ -52,6 +52,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
