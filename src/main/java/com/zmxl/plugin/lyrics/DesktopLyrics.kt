@@ -789,8 +789,7 @@ private fun setupSystemTray() {
     val menuWindow = JWindow().apply {
         isAlwaysOnTop = true
         background = Color(0, 0, 0, 0) // 完全透明
-        isFocusableWindowState = false
-        focusableWindowState = false
+        isFocusable = false // 修复：使用正确的属性名
     }
     
     // 创建菜单面板
@@ -907,6 +906,7 @@ private fun setupSystemTray() {
         override fun windowDeactivated(e: WindowEvent) {
             // 窗口失去焦点时隐藏
             menuWindow.isVisible = false
+            removeGlobalListeners()
         }
         
         override fun windowClosed(e: WindowEvent) {
@@ -1939,6 +1939,7 @@ private fun createMenuItem(text: String, action: () -> Unit): JButton {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
