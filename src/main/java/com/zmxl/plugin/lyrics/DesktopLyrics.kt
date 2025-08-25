@@ -1241,6 +1241,13 @@ class LyricsPanel : JPanel() {
     var animationSpeed = 10
     var alignment = Alignment.CENTER
     var useShadow = true // 是否使用文字阴影
+    private var currentLineScrollOffset = 0
+    private var nextLineScrollOffset = 0
+    private var currentLineScrollTimer: Timer? = null
+    private var nextLineScrollTimer: Timer? = null
+    private var currentLineNeedsScroll = false
+    private var nextLineNeedsScroll = false
+    private var hasTranslation = false
     
     // 字体设置
     private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
@@ -1323,194 +1330,282 @@ class LyricsPanel : JPanel() {
         targetAlpha = 0f
     }
     
-    fun updateContent(title: String, artist: String, position: Long, lyric: String?) {
-        this.title = title
-        this.artist = artist
-        this.position = position
-        
-        // 只有在歌词变化时重新解析
-        if (lyric != null && this.lyric != lyric) {
-            this.lyric = lyric
-            parsedLyrics = parseLyrics(lyric)
-        }
-        
-        // 更新当前歌词行
-        val newIndex = findCurrentLyricLine()
-        
-        // 如果行索引变化，启动动画
-        if (newIndex != currentLineIndex) {
-            prevLineIndex = currentLineIndex
-            nextLineIndex = newIndex
-            currentLineIndex = newIndex
-            animationProgress = 0f
-            animationDirection = 1
+        fun updateContent(title: String, artist: String, position: Long, lyric: String?) {
+            this.title = title
+            this.artist = artist
+            this.position = position
             
-            // 设置平滑动画目标值
-            targetPosition = newIndex.toFloat()
-            targetAlpha = 1f
-        }
-        
-        repaint()
-    }
-    
-    fun toggleTransparency() {
-        transparency = if (transparency < 0.5f) 0.8f else 0.3f
-        val bg = backgroundColor
-        background = Color(bg.red, bg.green, bg.blue, (255 * transparency).roundToInt())
-        repaint()
-    }
-    
-    private fun parseLyrics(lyricText: String?): List<LyricLine> {
-        if (lyricText.isNullOrEmpty()) return emptyList()
-        
-        val lines = mutableListOf<LyricLine>()
-        val pattern = Regex("""\[(\d+):(\d+)(?:\.(\d+))?](.*)""")
-        
-        lyricText.split("\n").forEach { line ->
-            val match = pattern.find(line) ?: return@forEach
-            val (min, sec, millis, text) = match.destructured
-            
-            val minutes = min.toLong()
-            val seconds = sec.toLong()
-            val millisValue = millis.toLongOrNull() ?: 0
-            
-            // 计算总毫秒数
-            val totalMillis = minutes * 60 * 1000 + seconds * 1000 + millisValue * 10
-            
-            if (text.isNotBlank()) {
-                lines.add(LyricLine(totalMillis, text.trim()))
+            // 只有在歌词变化时重新解析
+            if (lyric != null && this.lyric != lyric) {
+                this.lyric = lyric
+                parsedLyrics = parseLyrics(lyric)
+                // 检查是否有翻译歌词（相同时间戳的连续歌词行）
+                checkForTranslation()
             }
-        }
-        
-        return lines.sortedBy { it.time }
-    }
-    
-    private fun findCurrentLyricLine(): Int {
-        if (parsedLyrics.isEmpty()) return -1
-        
-        // 找到当前时间之前的最后一行歌词
-        for (i in parsedLyrics.indices.reversed()) {
-            if (position >= parsedLyrics[i].time) {
-                return i
+            
+            // 更新当前歌词行
+            val newIndex = findCurrentLyricLine()
+            
+            // 如果行索引变化，启动动画
+            if (newIndex != currentLineIndex) {
+                prevLineIndex = currentLineIndex
+                nextLineIndex = newIndex
+                currentLineIndex = newIndex
+                animationProgress = 0f
+                animationDirection = 1
+                
+                // 设置平滑动画目标值
+                targetPosition = newIndex.toFloat()
+                targetAlpha = 1f
+                
+                // 重置滚动偏移
+                currentLineScrollOffset = 0
+                nextLineScrollOffset = 0
+                
+                // 检查是否需要滚动
+                checkScrollNeeded()
             }
+            
+            repaint()
         }
         
-        return -1
-    }
-    
-    private fun getTextWidth(g: Graphics2D, text: String): Int {
-        return g.fontMetrics.stringWidth(text)
-    }
-    
-    private fun getTextXPosition(g: Graphics2D, text: String): Int {
-        return when (alignment) {
-            Alignment.LEFT -> 20
-            Alignment.RIGHT -> width - getTextWidth(g, text) - 20
-            else -> (width - getTextWidth(g, text)) / 2 // CENTER
-        }
-    }
-    
-    override fun paintComponent(g: Graphics) {
-        super.paintComponent(g)
-        val g2d = g as Graphics2D
-        
-        // 设置抗锯齿
-        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-        
-        // 绘制歌词
-        val yPos = height / 2 + 20
-        
-        if (parsedLyrics.isNotEmpty()) {
-            // 绘制上一行歌词（淡出）
-            if (prevLineIndex in parsedLyrics.indices) {
-                val alpha = (255 * (1 - smoothAlpha)).toInt()
-                val color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, alpha)
-                
-                g2d.color = color
-                g2d.font = getFontForText(parsedLyrics[prevLineIndex].text)
-                val prevLine = parsedLyrics[prevLineIndex].text
-                val prevX = getTextXPosition(g2d, prevLine)
-                val prevY = yPos - (40 * smoothAlpha).toInt()
-                
-                // 使用阴影效果
-                if (useShadow) {
-                    g2d.color = Color(0, 0, 0, alpha / 2)
-                    g2d.drawString(prevLine, prevX + 1, prevY + 1)
+        private fun checkForTranslation() {
+            hasTranslation = false
+            if (parsedLyrics.size < 2) return
+            
+            for (i in 0 until parsedLyrics.size - 1) {
+                if (parsedLyrics[i].time == parsedLyrics[i + 1].time) {
+                    hasTranslation = true
+                    break
                 }
-                
-                g2d.color = color
-                g2d.drawString(prevLine, prevX, prevY)
             }
+        }
+        
+        private fun checkScrollNeeded() {
+            // 停止之前的滚动计时器
+            currentLineScrollTimer?.stop()
+            nextLineScrollTimer?.stop()
             
-            // 绘制当前行歌词（淡入）
+            // 检查当前行是否需要滚动
+            currentLineNeedsScroll = false
             if (currentLineIndex in parsedLyrics.indices) {
-                val alpha = (255 * smoothAlpha).toInt()
-                val color = Color(highlightColor.red, highlightColor.green, highlightColor.blue, alpha)
+                val text = parsedLyrics[currentLineIndex].text
+                val font = getFontForText(text)
+                val metrics = getFontMetrics(font)
+                val textWidth = metrics.stringWidth(text)
+                currentLineNeedsScroll = textWidth > width * 0.85
                 
-                g2d.color = color
-                g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
-                val currentLine = parsedLyrics[currentLineIndex].text
-                val currentX = getTextXPosition(g2d, currentLine)
-                val currentY = yPos - (20 * (1 - smoothAlpha)).toInt()
-                
-                // 使用阴影效果
-                if (useShadow) {
-                    g2d.color = Color(0, 0, 0, alpha / 2)
-                    g2d.drawString(currentLine, currentX + 1, currentY + 1)
+                if (currentLineNeedsScroll) {
+                    startCurrentLineScrollTimer()
                 }
-                
-                g2d.color = color
-                g2d.drawString(currentLine, currentX, currentY)
             }
             
-            // 绘制下一行歌词
-            if (currentLineIndex < parsedLyrics.size - 1) {
-                g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
-                g2d.font = getFontForText(parsedLyrics[currentLineIndex + 1].text)
-                val nextLine = parsedLyrics[currentLineIndex + 1].text
-                val nextX = getTextXPosition(g2d, nextLine)
+            // 检查下一行是否需要滚动（如果有翻译）
+            nextLineNeedsScroll = false
+            if (hasTranslation && currentLineIndex in parsedLyrics.indices && 
+                currentLineIndex < parsedLyrics.size - 1 &&
+                parsedLyrics[currentLineIndex].time == parsedLyrics[currentLineIndex + 1].time) {
                 
-                // 使用阴影效果
-                if (useShadow) {
-                    g2d.color = Color(0, 0, 0, 75)
-                    g2d.drawString(nextLine, nextX + 1, yPos + 40 + 1)
+                val text = parsedLyrics[currentLineIndex + 1].text
+                val font = getFontForText(text)
+                val metrics = getFontMetrics(font)
+                val textWidth = metrics.stringWidth(text)
+                nextLineNeedsScroll = textWidth > width * 0.85
+                
+                if (nextLineNeedsScroll) {
+                    startNextLineScrollTimer()
                 }
-                
-                g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
-                g2d.drawString(nextLine, nextX, yPos + 40)
             }
-        } else if (lyric.isNotEmpty()) {
-            // 绘制静态歌词
-            g2d.color = lyricColor
-            g2d.font = getFontForText(lyric)
-            val lyricX = getTextXPosition(g2d, lyric)
-            
-            // 使用阴影效果
-            if (useShadow) {
-                g2d.color = Color(0, 0, 0, 150)
-                g2d.drawString(lyric, lyricX + 1, yPos + 1)
-            }
-            
-            g2d.color = lyricColor
-            g2d.drawString(lyric, lyricX, yPos)
-        } else {
-            // 没有歌词时的提示
-            g2d.color = Color.LIGHT_GRAY
-            g2d.font = chineseFont
-            val message = "歌词加载中..."
-            val messageX = getTextXPosition(g2d, message)
-            
-            // 使用阴影效果
-            if (useShadow) {
-                g2d.color = Color(0, 0, 0, 150)
-                g2d.drawString(message, messageX + 1, yPos + 1)
-            }
-            
-            g2d.color = Color.LIGHT_GRAY
-            g2d.drawString(message, messageX, yPos)
         }
-    }
+        
+        private fun startCurrentLineScrollTimer() {
+            currentLineScrollTimer?.stop()
+            currentLineScrollTimer = Timer(20) {
+                if (currentLineIndex in parsedLyrics.indices) {
+                    val text = parsedLyrics[currentLineIndex].text
+                    val font = getFontForText(text)
+                    val metrics = getFontMetrics(font)
+                    val textWidth = metrics.stringWidth(text)
+                    
+                    currentLineScrollOffset += 1
+                    if (currentLineScrollOffset > textWidth + 50) { // 50是文本之间的间隔
+                        currentLineScrollOffset = -width
+                    }
+                    repaint()
+                } else {
+                    currentLineScrollTimer?.stop()
+                }
+            }
+            currentLineScrollTimer?.start()
+        }
+        
+        private fun startNextLineScrollTimer() {
+            nextLineScrollTimer?.stop()
+            nextLineScrollTimer = Timer(20) {
+                if (currentLineIndex in parsedLyrics.indices && 
+                    currentLineIndex < parsedLyrics.size - 1 &&
+                    parsedLyrics[currentLineIndex].time == parsedLyrics[currentLineIndex + 1].time) {
+                    
+                    val text = parsedLyrics[currentLineIndex + 1].text
+                    val font = getFontForText(text)
+                    val metrics = getFontMetrics(font)
+                    val textWidth = metrics.stringWidth(text)
+                    
+                    nextLineScrollOffset += 1
+                    if (nextLineScrollOffset > textWidth + 50) { // 50是文本之间的间隔
+                        nextLineScrollOffset = -width
+                    }
+                    repaint()
+                } else {
+                    nextLineScrollTimer?.stop()
+                }
+            }
+            nextLineScrollTimer?.start()
+        }
+        
+        override fun paintComponent(g: Graphics) {
+            super.paintComponent(g)
+            val g2d = g as Graphics2D
+            
+            // 设置抗锯齿
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            
+            // 绘制歌词
+            val yPos = height / 2 + 20
+            
+            if (parsedLyrics.isNotEmpty()) {
+                // 绘制上一行歌词（淡出）
+                if (prevLineIndex in parsedLyrics.indices) {
+                    val alpha = (255 * (1 - smoothAlpha)).toInt()
+                    val color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, alpha)
+                    
+                    g2d.color = color
+                    g2d.font = getFontForText(parsedLyrics[prevLineIndex].text)
+                    val prevLine = parsedLyrics[prevLineIndex].text
+                    
+                    // 使用阴影效果
+                    if (useShadow) {
+                        g2d.color = Color(0, 0, 0, alpha / 2)
+                        g2d.drawString(prevLine, getTextXPosition(g2d, prevLine) + 1, yPos - (40 * smoothAlpha).toInt() + 1)
+                    }
+                    
+                    g2d.color = color
+                    g2d.drawString(prevLine, getTextXPosition(g2d, prevLine), yPos - (40 * smoothAlpha).toInt())
+                }
+                
+                // 绘制当前行歌词（淡入）
+                if (currentLineIndex in parsedLyrics.indices) {
+                    val alpha = (255 * smoothAlpha).toInt()
+                    val color = Color(highlightColor.red, highlightColor.green, highlightColor.blue, alpha)
+                    
+                    g2d.color = color
+                    g2d.font = getFontForText(parsedLyrics[currentLineIndex].text)
+                    val currentLine = parsedLyrics[currentLineIndex].text
+                    
+                    if (currentLineNeedsScroll) {
+                        // 滚动绘制当前行
+                        val x = -currentLineScrollOffset
+                        
+                        // 使用阴影效果
+                        if (useShadow) {
+                            g2d.color = Color(0, 0, 0, alpha / 2)
+                            g2d.drawString(currentLine, x + 1, yPos - (20 * (1 - smoothAlpha)).toInt() + 1)
+                            // 绘制文本的副本以实现循环滚动
+                            g2d.drawString(currentLine, x + getTextWidth(g2d, currentLine) + 50 + 1, yPos - (20 * (1 - smoothAlpha)).toInt() + 1)
+                        }
+                        
+                        g2d.color = color
+                        g2d.drawString(currentLine, x, yPos - (20 * (1 - smoothAlpha)).toInt())
+                        // 绘制文本的副本以实现循环滚动
+                        g2d.drawString(currentLine, x + getTextWidth(g2d, currentLine) + 50, yPos - (20 * (1 - smoothAlpha)).toInt())
+                    } else {
+                        val currentX = getTextXPosition(g2d, currentLine)
+                        val currentY = yPos - (20 * (1 - smoothAlpha)).toInt()
+                        
+                        // 使用阴影效果
+                        if (useShadow) {
+                            g2d.color = Color(0, 0, 0, alpha / 2)
+                            g2d.drawString(currentLine, currentX + 1, currentY + 1)
+                        }
+                        
+                        g2d.color = color
+                        g2d.drawString(currentLine, currentX, currentY)
+                    }
+                }
+                
+                // 绘制下一行歌词
+                if (currentLineIndex < parsedLyrics.size - 1) {
+                    val nextLineIndex = currentLineIndex + 1
+                    val isTranslation = hasTranslation && parsedLyrics[currentLineIndex].time == parsedLyrics[nextLineIndex].time
+                    
+                    g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
+                    g2d.font = getFontForText(parsedLyrics[nextLineIndex].text)
+                    val nextLine = parsedLyrics[nextLineIndex].text
+                    
+                    if (isTranslation && nextLineNeedsScroll) {
+                        // 滚动绘制翻译行
+                        val x = -nextLineScrollOffset
+                        val nextY = yPos + 40
+                        
+                        // 使用阴影效果
+                        if (useShadow) {
+                            g2d.color = Color(0, 0, 0, 75)
+                            g2d.drawString(nextLine, x + 1, nextY + 1)
+                            // 绘制文本的副本以实现循环滚动
+                            g2d.drawString(nextLine, x + getTextWidth(g2d, nextLine) + 50 + 1, nextY + 1)
+                        }
+                        
+                        g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
+                        g2d.drawString(nextLine, x, nextY)
+                        // 绘制文本的副本以实现循环滚动
+                        g2d.drawString(nextLine, x + getTextWidth(g2d, nextLine) + 50, nextY)
+                    } else {
+                        val nextX = getTextXPosition(g2d, nextLine)
+                        
+                        // 使用阴影效果
+                        if (useShadow) {
+                            g2d.color = Color(0, 0, 0, 75)
+                            g2d.drawString(nextLine, nextX + 1, yPos + 40 + 1)
+                        }
+                        
+                        g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
+                        g2d.drawString(nextLine, nextX, yPos + 40)
+                    }
+                }
+            } else if (lyric.isNotEmpty()) {
+                // 绘制静态歌词
+                g2d.color = lyricColor
+                g2d.font = getFontForText(lyric)
+                val lyricX = getTextXPosition(g2d, lyric)
+                
+                // 使用阴影效果
+                if (useShadow) {
+                    g2d.color = Color(0, 0, 0, 150)
+                    g2d.drawString(lyric, lyricX + 1, yPos + 1)
+                }
+                
+                g2d.color = lyricColor
+                g2d.drawString(lyric, lyricX, yPos)
+            } else {
+                // 没有歌词时的提示
+                g2d.color = Color.LIGHT_GRAY
+                g2d.font = chineseFont
+                val message = "歌词加载中..."
+                val messageX = getTextXPosition(g2d, message)
+                
+                // 使用阴影效果
+                if (useShadow) {
+                    g2d.color = Color(0, 0, 0, 150)
+                    g2d.drawString(message, messageX + 1, yPos + 1)
+                }
+                
+                g2d.color = Color.LIGHT_GRAY
+                g2d.drawString(message, messageX, yPos)
+            }
+        }
+        
     
     data class LyricLine(val time: Long, val text: String)
 }
+
