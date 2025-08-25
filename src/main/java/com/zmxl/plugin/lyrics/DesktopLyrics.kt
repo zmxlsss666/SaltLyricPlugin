@@ -1625,4 +1625,4 @@ object DesktopLyrics {
         
         data class LyricLine(val time: Long, val text: String)
     }
-}
+    
