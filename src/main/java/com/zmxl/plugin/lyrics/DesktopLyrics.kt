@@ -603,7 +603,6 @@ object DesktopLyrics {
                 minimizeButton = createControlButton("−").apply {
                     addActionListener { 
                         frame.isVisible = false
-                        isWindowVisible = false
                     }
                 }
                 
@@ -1797,6 +1796,7 @@ private fun setupSystemTray() {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
