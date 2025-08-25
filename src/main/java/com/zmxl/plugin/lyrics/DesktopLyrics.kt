@@ -1392,9 +1392,7 @@ class LyricsPanel : JPanel() {
             if (hasTranslation && currentLineIndex < parsedLyrics.size - 1 && 
                 parsedLyrics[currentLineIndex].time == parsedLyrics[currentLineIndex + 1].time) {
                 nextLineScrollText = parsedLyrics[currentLineIndex + 1].text
-                val nextFm = getFontMetrics(getFontForText(nextLineScrollText))
-                val nextTextWidth = nextFm.stringWidth(nextLineScrollText)
-                nextLineNeedsScroll = nextTextWidth > width * 0.85
+                nextLineNeedsScroll = false
             } else {
                 nextLineScrollText = ""
                 nextLineNeedsScroll = false
@@ -1714,3 +1712,4 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
