@@ -28,9 +28,6 @@ import org.xml.sax.ContentHandler
 import java.io.File
 import java.io.FileInputStream
 import org.apache.tika.parser.mp3.Mp3Parser
-import org.apache.tika.parser.audio.WaveParser
-import org.apache.tika.parser.audio.AiffParser
-import org.apache.tika.parser.audio.WmaParser
 import org.apache.tika.parser.mp4.MP4Parser
 import org.gagravarr.tika.FlacParser
 import org.gagravarr.tika.OggParser
@@ -1157,6 +1154,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
