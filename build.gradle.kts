@@ -27,6 +27,7 @@ dependencies {
     implementation("org.apache.tika:tika-parsers:3.2.2")
     implementation("org.gagravarr:vorbis-java-tika:0.8")
     implementation("org.apache.tika:tika-parser-audiovideo-module:3.2.2")
+    implementation("org.gagravarr:vorbis-java-core:0.8")
 
 }
 val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
@@ -54,6 +55,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
