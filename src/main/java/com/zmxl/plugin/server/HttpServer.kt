@@ -28,6 +28,13 @@ import org.apache.tika.sax.BodyContentHandler
 import org.xml.sax.ContentHandler
 import java.io.File
 import java.io.FileInputStream
+import com.mpatric.mp3agic.Mp3File
+import com.mpatric.mp3agic.ID3v1
+import com.mpatric.mp3agic.ID3v2
+import com.mpatric.mp3agic.ID3v24Tag
+import com.mpatric.mp3agic.NotSupportedException
+import com.mpatric.mp3agic.InvalidDataException
+import com.mpatric.mp3agic.UnsupportedTagException
 
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
@@ -331,7 +338,7 @@ class HttpServer(private val port: Int) {
     }
 
     /**
-     * 歌词API - Tika
+     * 歌词API - 使用mp3agic处理MP3，其他格式使用Tika
      */
     class LyricFileServlet : HttpServlet() {
         private val gson = Gson()
@@ -340,7 +347,7 @@ class HttpServer(private val port: Int) {
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
             
-
+            // 只使用当前播放媒体的路径，不接收外部路径参数
             val currentMedia = PlaybackStateHolder.currentMedia
             if (currentMedia == null || currentMedia.path.isNullOrBlank()) {
                 resp.status = HttpServletResponse.SC_BAD_REQUEST
@@ -377,8 +384,12 @@ class HttpServer(private val port: Int) {
                     return
                 }
                 
-                // 使用Tika提取歌词
-                val lyrics = extractLyricsFromFile(file)
+                // 使用不同的方法提取歌词
+                val lyrics = if (extension == "mp3") {
+                    extractLyricsFromMp3File(file)
+                } else {
+                    extractLyricsFromFileWithTika(file)
+                }
                 
                 if (lyrics.isNotBlank()) {
                     val response = mapOf(
@@ -409,9 +420,70 @@ class HttpServer(private val port: Int) {
         }
         
         /**
-         * 使用Tika从音频文件中提取歌词
+         * 使用mp3agic从MP3文件中提取歌词
          */
-        private fun extractLyricsFromFile(file: File): String {
+        private fun extractLyricsFromMp3File(file: File): String {
+            try {
+                val mp3File = Mp3File(file)
+                
+                // 尝试从ID3v2标签获取歌词
+                if (mp3File.hasId3v2Tag()) {
+                    val id3v2Tag = mp3File.id3v2Tag
+                    
+                    // 尝试获取USLT帧（非同步歌词）
+                    val unsyncLyricsFrame = id3v2Tag.getUnsynchronisedLyricsFrame()
+                    if (unsyncLyricsFrame != null) {
+                        val lyrics = unsyncLyricsFrame.lyrics
+                        if (lyrics != null && lyrics.isNotBlank()) {
+                            return lyrics
+                        }
+                    }
+                    
+                    // 尝试获取SYLT帧（同步歌词）
+                    val syncLyricsFrame = id3v2Tag.getSynchronisedLyricsFrame()
+                    if (syncLyricsFrame != null) {
+                        val lyrics = syncLyricsFrame.lyrics
+                        if (lyrics != null && lyrics.isNotBlank()) {
+                            return lyrics
+                        }
+                    }
+                    
+                    // 尝试获取其他可能的歌词字段
+                    val commentFrames = id3v2Tag.getCommentFrames()
+                    for (frame in commentFrames) {
+                        val comment = frame.comment
+                        if (comment != null && comment.isNotBlank() && 
+                            (comment.contains("lyric", ignoreCase = true) || 
+                             comment.length > 50)) { // 假设长注释可能是歌词
+                            return comment
+                        }
+                    }
+                }
+                
+                // 如果没有找到歌词，尝试查找ID3v1标签
+                if (mp3File.hasId3v1Tag()) {
+                    val id3v1Tag = mp3File.id3v1Tag
+                    // ID3v1没有专门的歌词字段，但可以检查注释字段
+                    val comment = id3v1Tag.comment
+                    if (comment != null && comment.isNotBlank() && 
+                        (comment.contains("lyric", ignoreCase = true) || 
+                         comment.length > 50)) { // 假设长注释可能是歌词
+                        return comment
+                    }
+                }
+            } catch (e: Exception) {
+                println("使用mp3agic处理MP3文件失败: ${e.message}")
+                // 失败时回退到Tika
+                return extractLyricsFromFileWithTika(file)
+            }
+            
+            return ""
+        }
+        
+        /**
+         * 使用Tika从非MP3音频文件中提取歌词
+         */
+        private fun extractLyricsFromFileWithTika(file: File): String {
             val metadata = Metadata()
             val parser = AutoDetectParser()
             val context = ParseContext()
@@ -1137,14 +1209,3 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
