@@ -604,12 +604,13 @@ object DesktopLyrics {
                 
                 // 最小化按钮
                 minimizeButton = createControlButton("−").apply {
-                    addActionListener { 
-                    // 确保在事件分发线程中执行UI操作
-                        SwingUtilities.invokeLater {
+                    addActionListener {
                         frame.isVisible = false
+                // 显示托盘消息
+                try {
                     if (SystemTray.isSupported()) {
-                        val trayIcons = SystemTray.getSystemTray().trayIcons
+                        val tray = SystemTray.getSystemTray()
+                        val trayIcons = tray.trayIcons
                     if (trayIcons.isNotEmpty()) {
                     trayIcons[0].displayMessage(
                         "Salt Player 桌面歌词", 
@@ -618,6 +619,8 @@ object DesktopLyrics {
                     )
                 }
             }
+                    } catch (e: Exception) {
+                        println("显示托盘消息失败: ${e.message}")
         }
     }
 }
@@ -1402,53 +1405,59 @@ private fun createMenuItem(text: String, action: () -> Unit): JButton {
         return image
     }
     
-    private fun updateLyrics() {
-        try {
-            // 获取当前播放信息
-            val nowPlaying = getNowPlaying()
-            if (nowPlaying == null) {
+private fun updateLyrics() {
+    try {
+        // 获取当前播放信息
+        val nowPlaying = getNowPlaying()
+        if (nowPlaying == null) {
+            // 只有当窗口可见时才隐藏
+            if (frame.isVisible) {
                 frame.isVisible = false
-                return
             }
-            
-            // 更新播放/暂停按钮图标
-            playPauseButton.text = if (nowPlaying.isPlaying) "❚❚" else "▶"
-            
-            // 更新标题-艺术家显示
-            updateTitleArtistDisplay(nowPlaying.title ?: "", nowPlaying.artist ?: "")
-            
-            // 检查歌曲是否变化
-            val newSongId = "${nowPlaying.title}-${nowPlaying.artist}-${nowPlaying.album}"
-            val songChanged = newSongId != currentSongId
-            
-            if (songChanged) {
-                currentSongId = newSongId
-                // 重置歌词状态
-                lyricsPanel.resetLyrics()
-                lastLyricUrl = ""
-            }
-            
-            // 获取歌词内容（仅在需要时）
-            val lyricContent = if (songChanged || lyricsPanel.parsedLyrics.isEmpty()) {
-                getLyric()
-            } else {
-                null
-            }
-            
-            // 更新歌词面板
-            lyricsPanel.updateContent(
-                title = nowPlaying.title ?: "无歌曲播放",
-                artist = nowPlaying.artist ?: "",
-                position = nowPlaying.position,
-                lyric = lyricContent
-            )
-            
-            frame.isVisible = true
-        } catch (e: Exception) {
-            // 连接失败时隐藏窗口
+            return
+        }
+        
+        // 更新播放/暂停按钮图标
+        playPauseButton.text = if (nowPlaying.isPlaying) "❚❚" else "▶"
+        
+        // 更新标题-艺术家显示
+        updateTitleArtistDisplay(nowPlaying.title ?: "", nowPlaying.artist ?: "")
+        
+        // 检查歌曲是否变化
+        val newSongId = "${nowPlaying.title}-${nowPlaying.artist}-${nowPlaying.album}"
+        val songChanged = newSongId != currentSongId
+        
+        if (songChanged) {
+            currentSongId = newSongId
+            // 重置歌词状态
+            lyricsPanel.resetLyrics()
+            lastLyricUrl = ""
+        }
+        
+        // 获取歌词内容（仅在需要时）
+        val lyricContent = if (songChanged || lyricsPanel.parsedLyrics.isEmpty()) {
+            getLyric()
+        } else {
+            null
+        }
+        
+        // 更新歌词面板
+        lyricsPanel.updateContent(
+            title = nowPlaying.title ?: "无歌曲播放",
+            artist = nowPlaying.artist ?: "",
+            position = nowPlaying.position,
+            lyric = lyricContent
+        )
+        
+        // 只有当有歌曲播放时才显示窗口
+        frame.isVisible = true
+    } catch (e: Exception) {
+        // 连接失败时，只有当窗口可见时才隐藏
+        if (frame.isVisible) {
             frame.isVisible = false
         }
     }
+}
     
     private fun getNowPlaying(): NowPlaying? {
         try {
@@ -1939,6 +1948,7 @@ private fun createMenuItem(text: String, action: () -> Unit): JButton {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
