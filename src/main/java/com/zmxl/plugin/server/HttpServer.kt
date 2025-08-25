@@ -429,11 +429,8 @@ class HttpServer(private val port: Int) {
             val parser = when (file.extension.lowercase()) {
                 "mp3" -> Mp3Parser()
                 "flac" -> FlacParser()
-                "wav" -> WaveParser()
-                "aiff" -> AiffParser()
                 "ogg" -> OggParser()
                 "opus" -> OpusParser()
-                "wma" -> WmaParser()
                 "m4a", "aac" -> MP4Parser()
                 else -> {
                     println("警告: 未知文件格式 ${file.extension}，尝试使用MP3解析器")
@@ -1160,6 +1157,7 @@ class LyricKugouServlet : HttpServlet() {
         }
     }
 }
+
 
 
 
