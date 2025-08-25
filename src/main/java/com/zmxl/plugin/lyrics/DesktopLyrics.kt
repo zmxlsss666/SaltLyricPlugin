@@ -785,108 +785,133 @@ private fun setupSystemTray() {
     val image = createTrayIconImage()
     val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
     
-    // 使用Swing的JPopupMenu替代AWT的PopupMenu
-    val popupMenu = JPopupMenu().apply {
-        isLightWeightPopupEnabled = true
+    // 创建一个透明的JWindow作为菜单容器
+    val menuWindow = JWindow().apply {
+        isAlwaysOnTop = true
+        background = Color(0, 0, 0, 0) // 完全透明
+        isFocusableWindowState = false
+        focusableWindowState = false
+    }
+    
+    // 创建菜单面板
+    val menuPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        background = Color(60, 60, 60, 230)
+        border = BorderFactory.createEmptyBorder(5, 5, 5, 5)
     }
     
     // 添加显示/隐藏菜单项
-    val toggleItem = JMenuItem("显示/隐藏").apply {
-        font = Font("微软雅黑", Font.PLAIN, 12)
-        addActionListener { frame.isVisible = !frame.isVisible }
+    val toggleItem = createMenuItem("显示/隐藏") {
+        frame.isVisible = !frame.isVisible
+        menuWindow.isVisible = false
     }
-    popupMenu.add(toggleItem)
+    menuPanel.add(toggleItem)
     
     // 添加锁定/解锁菜单项
-    val lockItem = JMenuItem(if (isLocked) "解锁" else "锁定").apply {
-        font = Font("微软雅黑", Font.PLAIN, 12)
-        addActionListener { toggleLock() }
+    val lockItem = createMenuItem(if (isLocked) "解锁" else "锁定") {
+        toggleLock()
+        menuWindow.isVisible = false
     }
-    popupMenu.add(lockItem)
+    menuPanel.add(lockItem)
     
     // 添加设置菜单项
-    val settingsItem = JMenuItem("设置").apply {
-        font = Font("微软雅黑", Font.PLAIN, 12)
-        addActionListener { showSettingsDialog() }
+    val settingsItem = createMenuItem("设置") {
+        showSettingsDialog()
+        menuWindow.isVisible = false
     }
-    popupMenu.add(settingsItem)
+    menuPanel.add(settingsItem)
     
-    popupMenu.addSeparator()
+    // 添加分隔线
+    menuPanel.add(JSeparator().apply {
+        foreground = Color(120, 120, 120)
+        maximumSize = Dimension(Int.MAX_VALUE, 1)
+    })
     
     // 添加退出菜单项
-    val exitItem = JMenuItem("退出").apply {
-        font = Font("微软雅黑", Font.PLAIN, 12)
-        addActionListener { exitApplication() }
+    val exitItem = createMenuItem("退出") {
+        exitApplication()
+        menuWindow.isVisible = false
     }
-    popupMenu.add(exitItem)
+    menuPanel.add(exitItem)
     
-    // 全局鼠标监听器
+    // 设置菜单窗口内容
+    menuWindow.contentPane = menuPanel
+    menuWindow.pack()
+    
+    // 添加全局鼠标监听器
     val globalMouseListener = object : MouseAdapter() {
         override fun mousePressed(e: MouseEvent) {
-            // 检查点击是否在弹出菜单之外
-            if (popupMenu.isVisible) {
+            if (menuWindow.isVisible) {
                 val mousePoint = e.locationOnScreen
-                val menuBounds = Rectangle(popupMenu.locationOnScreen, popupMenu.size)
+                val menuBounds = Rectangle(menuWindow.location, menuWindow.size)
                 
                 if (!menuBounds.contains(mousePoint)) {
-                    popupMenu.isVisible = false
+                    menuWindow.isVisible = false
                 }
             }
         }
     }
     
-    // 添加全局鼠标监听器的方法
-    val addGlobalMouseListener = {
-        // 获取所有顶层窗口并添加监听器
-        Window.getWindows().forEach { window ->
-            if (window.isVisible) {
-                window.addMouseListener(globalMouseListener)
+    // 添加键盘监听器（ESC键关闭菜单）
+    val globalKeyListener = object : KeyAdapter() {
+        override fun keyPressed(e: KeyEvent) {
+            if (e.keyCode == KeyEvent.VK_ESCAPE && menuWindow.isVisible) {
+                menuWindow.isVisible = false
             }
         }
     }
     
-    // 移除全局鼠标监听器的方法
-    val removeGlobalMouseListener = {
-        // 获取所有顶层窗口并移除监听器
+    // 为所有窗口添加监听器
+    fun addGlobalListeners() {
         Window.getWindows().forEach { window ->
-            window.removeMouseListener(globalMouseListener)
+            if (window.isVisible) {
+                window.addMouseListener(globalMouseListener)
+                window.addKeyListener(globalKeyListener)
+            }
         }
     }
     
-    // 添加弹出菜单监听器
-    popupMenu.addPopupMenuListener(object : javax.swing.event.PopupMenuListener {
-        override fun popupMenuWillBecomeVisible(e: javax.swing.event.PopupMenuEvent) {
-            // 菜单显示时添加全局监听器
-            addGlobalMouseListener()
+    // 移除全局监听器
+    fun removeGlobalListeners() {
+        Window.getWindows().forEach { window ->
+            window.removeMouseListener(globalMouseListener)
+            window.removeKeyListener(globalKeyListener)
         }
-        
-        override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) {
-            // 菜单隐藏时移除全局监听器
-            removeGlobalMouseListener()
-        }
-        
-        override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) {
-            // 菜单取消时移除全局监听器
-            removeGlobalMouseListener()
-        }
-    })
+    }
     
-    // 添加鼠标监听器以显示Swing弹出菜单
+    // 添加鼠标监听器以显示菜单
     trayIcon.addMouseListener(object : MouseAdapter() {
         override fun mouseReleased(e: MouseEvent) {
             if (e.isPopupTrigger) {
                 // 更新锁定/解锁菜单项文本
                 lockItem.text = if (isLocked) "解锁" else "锁定"
                 
-                // 使用SwingUtilities确保在EDT中执行
-                SwingUtilities.invokeLater {
-                    // 显示弹出菜单
-                    val point = MouseInfo.getPointerInfo().location
-                    popupMenu.setLocation(point.x, point.y - popupMenu.preferredSize.height)
-                    popupMenu.isVisible = true
-                    popupMenu.requestFocusInWindow()
-                }
+                // 获取鼠标位置
+                val mousePos = MouseInfo.getPointerInfo().location
+                
+                // 设置菜单窗口位置
+                menuWindow.setLocation(
+                    mousePos.x - menuWindow.width / 2,
+                    mousePos.y - menuWindow.height
+                )
+                
+                // 显示菜单并添加全局监听器
+                menuWindow.isVisible = true
+                addGlobalListeners()
             }
+        }
+    })
+    
+    // 添加菜单窗口监听器
+    menuWindow.addWindowListener(object : WindowAdapter() {
+        override fun windowDeactivated(e: WindowEvent) {
+            // 窗口失去焦点时隐藏
+            menuWindow.isVisible = false
+        }
+        
+        override fun windowClosed(e: WindowEvent) {
+            // 确保移除全局监听器
+            removeGlobalListeners()
         }
     })
     
@@ -899,13 +924,41 @@ private fun setupSystemTray() {
         println("无法添加系统托盘图标: ${e.message}")
     }
     
-    // 添加窗口关闭时的清理代码
+    // 添加应用程序关闭时的清理代码
     frame.addWindowListener(object : WindowAdapter() {
         override fun windowClosed(e: WindowEvent) {
-            // 确保移除全局鼠标监听器
-            removeGlobalMouseListener()
+            // 确保移除全局监听器
+            removeGlobalListeners()
+            menuWindow.dispose()
         }
     })
+}
+
+// 创建菜单项辅助函数
+private fun createMenuItem(text: String, action: () -> Unit): JButton {
+    return JButton(text).apply {
+        font = Font("微软雅黑", Font.PLAIN, 12)
+        foreground = Color.WHITE
+        background = Color(0, 0, 0, 0)
+        border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
+        horizontalAlignment = SwingConstants.LEFT
+        isContentAreaFilled = false
+        isFocusPainted = false
+        addActionListener { action() }
+        
+        // 添加鼠标悬停效果
+        addMouseListener(object : MouseAdapter() {
+            override fun mouseEntered(e: MouseEvent) {
+                background = Color(80, 80, 80, 200)
+                isContentAreaFilled = true
+            }
+            
+            override fun mouseExited(e: MouseEvent) {
+                background = Color(0, 0, 0, 0)
+                isContentAreaFilled = false
+            }
+        })
+    }
 }
     
     private fun showSettingsDialog() {
@@ -1886,6 +1939,7 @@ private fun setupSystemTray() {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
