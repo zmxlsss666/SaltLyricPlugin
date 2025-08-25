@@ -15,6 +15,9 @@ import java.net.URL
 import javax.swing.*
 import javax.swing.border.EmptyBorder
 import kotlin.math.roundToInt
+import javax.swing.event.PopupMenuListener
+import javax.swing.event.PopupMenuEvent
+
 
 object DesktopLyrics {
     private val frame = JFrame()
@@ -784,25 +787,7 @@ private fun setupSystemTray() {
     
     // 使用Swing的JPopupMenu替代AWT的PopupMenu
     val popupMenu = JPopupMenu().apply {
-        // 设置轻量级弹出菜单，确保能正确隐藏
         isLightWeightPopupEnabled = true
-        // 添加弹出菜单监听器，当菜单隐藏时移除全局监听器
-        addPopupMenuListener(object : PopupMenuListener {
-            override fun popupMenuWillBecomeVisible(e: PopupMenuEvent) {
-                // 菜单显示时添加全局监听器
-                addGlobalMouseListener()
-            }
-            
-            override fun popupMenuWillBecomeInvisible(e: PopupMenuEvent) {
-                // 菜单隐藏时移除全局监听器
-                removeGlobalMouseListener()
-            }
-            
-            override fun popupMenuCanceled(e: PopupMenuEvent) {
-                // 菜单取消时移除全局监听器
-                removeGlobalMouseListener()
-            }
-        })
     }
     
     // 添加显示/隐藏菜单项
@@ -851,7 +836,7 @@ private fun setupSystemTray() {
     }
     
     // 添加全局鼠标监听器的方法
-    fun addGlobalMouseListener() {
+    val addGlobalMouseListener = {
         // 获取所有顶层窗口并添加监听器
         Window.getWindows().forEach { window ->
             if (window.isVisible) {
@@ -861,12 +846,30 @@ private fun setupSystemTray() {
     }
     
     // 移除全局鼠标监听器的方法
-    fun removeGlobalMouseListener() {
+    val removeGlobalMouseListener = {
         // 获取所有顶层窗口并移除监听器
         Window.getWindows().forEach { window ->
             window.removeMouseListener(globalMouseListener)
         }
     }
+    
+    // 添加弹出菜单监听器
+    popupMenu.addPopupMenuListener(object : javax.swing.event.PopupMenuListener {
+        override fun popupMenuWillBecomeVisible(e: javax.swing.event.PopupMenuEvent) {
+            // 菜单显示时添加全局监听器
+            addGlobalMouseListener()
+        }
+        
+        override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) {
+            // 菜单隐藏时移除全局监听器
+            removeGlobalMouseListener()
+        }
+        
+        override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) {
+            // 菜单取消时移除全局监听器
+            removeGlobalMouseListener()
+        }
+    })
     
     // 添加鼠标监听器以显示Swing弹出菜单
     trayIcon.addMouseListener(object : MouseAdapter() {
@@ -1883,6 +1886,7 @@ private fun setupSystemTray() {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
