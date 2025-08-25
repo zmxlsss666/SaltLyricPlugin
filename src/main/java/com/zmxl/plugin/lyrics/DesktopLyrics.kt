@@ -55,6 +55,10 @@ object DesktopLyrics {
     private var scrollText = ""
     private var maxTextWidth = 0
     
+    // 存储当前歌曲信息用于滚动显示
+    private var currentTitle = ""
+    private var currentArtist = ""
+    
     // 毛玻璃效果相关
     private var backgroundAlpha = 0f
     private val backgroundTimer = Timer(16) {
@@ -445,6 +449,9 @@ object DesktopLyrics {
                     infoPanel.preferredSize = Dimension((width * 0.25).toInt(), 30)
                     revalidate()
                     repaint()
+                    
+                    // 当面板大小改变时，重新检查是否需要滚动
+                    updateTitleArtistDisplay(currentTitle, currentArtist)
                 }
             })
         }
@@ -496,6 +503,9 @@ object DesktopLyrics {
     }
     
     private fun updateTitleArtistDisplay(title: String, artist: String) {
+        currentTitle = title
+        currentArtist = artist
+        
         val displayText = if (titleArtistFormat == 0) {
             "$title - $artist"
         } else {
@@ -530,21 +540,15 @@ object DesktopLyrics {
             val textWidth = fm.stringWidth(scrollText)
             val panelWidth = (topPanel.width * 0.25).toInt()
             
-            if (scrollDirection == 1) {
-                // 向右滚动
-                scrollOffset += 2
+            if (textWidth > panelWidth) {
+                scrollOffset += 1
                 if (scrollOffset > textWidth + 20) {
                     scrollOffset = -panelWidth
                 }
+                titleArtistLabel.repaint()
             } else {
-                // 向左滚动
-                scrollOffset -= 2
-                if (scrollOffset < -textWidth - 20) {
-                    scrollOffset = panelWidth
-                }
+                scrollTimer?.stop()
             }
-            
-            titleArtistLabel.repaint()
         }
         scrollTimer?.start()
     }
@@ -1510,5 +1514,3 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
-
-
