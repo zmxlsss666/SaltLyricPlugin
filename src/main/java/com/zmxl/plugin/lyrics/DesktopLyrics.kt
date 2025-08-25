@@ -782,10 +782,27 @@ private fun setupSystemTray() {
     val image = createTrayIconImage()
     val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
     
-
+    // 使用Swing的JPopupMenu替代AWT的PopupMenu
     val popupMenu = JPopupMenu().apply {
-
+        // 设置轻量级弹出菜单，确保能正确隐藏
         isLightWeightPopupEnabled = true
+        // 添加弹出菜单监听器，当菜单隐藏时移除全局监听器
+        addPopupMenuListener(object : PopupMenuListener {
+            override fun popupMenuWillBecomeVisible(e: PopupMenuEvent) {
+                // 菜单显示时添加全局监听器
+                addGlobalMouseListener()
+            }
+            
+            override fun popupMenuWillBecomeInvisible(e: PopupMenuEvent) {
+                // 菜单隐藏时移除全局监听器
+                removeGlobalMouseListener()
+            }
+            
+            override fun popupMenuCanceled(e: PopupMenuEvent) {
+                // 菜单取消时移除全局监听器
+                removeGlobalMouseListener()
+            }
+        })
     }
     
     // 添加显示/隐藏菜单项
@@ -818,18 +835,37 @@ private fun setupSystemTray() {
     }
     popupMenu.add(exitItem)
     
-    // 添加全局鼠标监听器以确保点击其他地方时菜单隐藏
-    val menuWindowListener = object : MouseAdapter() {
+    // 全局鼠标监听器
+    val globalMouseListener = object : MouseAdapter() {
         override fun mousePressed(e: MouseEvent) {
-            if (popupMenu.isVisible && !SwingUtilities.isDescendantFrom(popupMenu, e.component)) {
-                popupMenu.setVisible(false)
+            // 检查点击是否在弹出菜单之外
+            if (popupMenu.isVisible) {
+                val mousePoint = e.locationOnScreen
+                val menuBounds = Rectangle(popupMenu.locationOnScreen, popupMenu.size)
+                
+                if (!menuBounds.contains(mousePoint)) {
+                    popupMenu.isVisible = false
+                }
             }
         }
     }
     
-    // 为所有窗口添加鼠标监听器
-    Frame.getFrames().forEach { frame ->
-        frame.addMouseListener(menuWindowListener)
+    // 添加全局鼠标监听器的方法
+    fun addGlobalMouseListener() {
+        // 获取所有顶层窗口并添加监听器
+        Window.getWindows().forEach { window ->
+            if (window.isVisible) {
+                window.addMouseListener(globalMouseListener)
+            }
+        }
+    }
+    
+    // 移除全局鼠标监听器的方法
+    fun removeGlobalMouseListener() {
+        // 获取所有顶层窗口并移除监听器
+        Window.getWindows().forEach { window ->
+            window.removeMouseListener(globalMouseListener)
+        }
     }
     
     // 添加鼠标监听器以显示Swing弹出菜单
@@ -845,7 +881,7 @@ private fun setupSystemTray() {
                     val point = MouseInfo.getPointerInfo().location
                     popupMenu.setLocation(point.x, point.y - popupMenu.preferredSize.height)
                     popupMenu.isVisible = true
-                    popupMenu.requestFocus()
+                    popupMenu.requestFocusInWindow()
                 }
             }
         }
@@ -863,10 +899,8 @@ private fun setupSystemTray() {
     // 添加窗口关闭时的清理代码
     frame.addWindowListener(object : WindowAdapter() {
         override fun windowClosed(e: WindowEvent) {
-            // 移除全局鼠标监听器
-            Frame.getFrames().forEach { frame ->
-                frame.removeMouseListener(menuWindowListener)
-            }
+            // 确保移除全局鼠标监听器
+            removeGlobalMouseListener()
         }
     })
 }
@@ -1849,6 +1883,7 @@ private fun setupSystemTray() {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
