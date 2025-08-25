@@ -95,7 +95,7 @@ object DesktopLyrics {
         var fontStyle: Int = Font.BOLD,
         var lyricColor: Int = Color.WHITE.rgb,
         var highlightColor: Int = Color(255, 215, 0).rgb,
-        var backgroundColor: Int = Color(0, 0, 0, 0).rgb,
+        var backgroundColor: Int = Color(0, 0, 0, 180).rgb,
         var transparency: Float = 0.8f,
         var animationSpeed: Int = 10,
         var alignment: Int = 0, // 0: CENTER, 1: LEFT, 2: RIGHT
@@ -1521,7 +1521,7 @@ private fun setupSystemTray() {
         // 颜色设置
         var lyricColor = Color.WHITE
         var highlightColor = Color(255, 215, 0) // 金色
-        var backgroundColor = Color(0, 0, 0, 0) // 背景颜色 - 完全透明
+        var backgroundColor = Color(0, 0, 0, 180) // 背景颜色
         
         // 动画状态
         private var animationProgress = 0f
@@ -1886,6 +1886,7 @@ private fun setupSystemTray() {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
