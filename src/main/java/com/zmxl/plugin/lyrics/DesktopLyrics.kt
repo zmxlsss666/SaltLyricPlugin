@@ -762,51 +762,60 @@ object DesktopLyrics {
         }.start()
     }
     
-    private fun setupSystemTray() {
-        val tray = SystemTray.getSystemTray()
-        val image = createTrayIconImage()
-        val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
-        
-        // 使用中文菜单项
-        val popup = PopupMenu()
-        
-        // 添加显示/隐藏菜单
-        val toggleItem = MenuItem("显示/隐藏")
-        toggleItem.addActionListener { frame.isVisible = !frame.isVisible }
-        
-        // 添加锁定/解锁菜单
-        val lockItem = MenuItem(if (isLocked) "解锁" else "锁定")
-        lockItem.addActionListener { toggleLock() }
-        
-        // 添加设置菜单
-        val settingsItem = MenuItem("设置")
-        settingsItem.addActionListener { showSettingsDialog() }
-        
-        // 添加退出菜单
-        val exitItem = MenuItem("退出")
-        exitItem.addActionListener { exitApplication() }
-        
-        popup.add(toggleItem)
-        popup.add(lockItem)
-        popup.add(settingsItem)
-        popup.addSeparator()
-        popup.add(exitItem)
-        
-        val font = Font("微软雅黑", Font.PLAIN, 12)
-        for (i in 0 until popup.itemCount) {
-            val item = popup.getItem(i)
-            item.font = font
+private fun setupSystemTray() {
+    if (!SystemTray.isSupported()) return
+    
+    val tray = SystemTray.getSystemTray()
+    val image = createTrayIconImage()
+    val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
+    
+    // 使用Swing的JPopupMenu替代AWT的PopupMenu
+    val popupMenu = JPopupMenu()
+    
+    // 添加显示/隐藏菜单项
+    val toggleItem = JMenuItem("显示/隐藏")
+    toggleItem.font = Font("微软雅黑", Font.PLAIN, 12)
+    toggleItem.addActionListener { frame.isVisible = !frame.isVisible }
+    popupMenu.add(toggleItem)
+    
+    // 添加锁定/解锁菜单项
+    val lockItem = JMenuItem(if (isLocked) "解锁" else "锁定")
+    lockItem.font = Font("微软雅黑", Font.PLAIN, 12)
+    lockItem.addActionListener { toggleLock() }
+    popupMenu.add(lockItem)
+    
+    // 添加设置菜单项
+    val settingsItem = JMenuItem("设置")
+    settingsItem.font = Font("微软雅黑", Font.PLAIN, 12)
+    settingsItem.addActionListener { showSettingsDialog() }
+    popupMenu.add(settingsItem)
+    
+    popupMenu.addSeparator()
+    
+    val exitItem = JMenuItem("退出")
+    exitItem.font = Font("微软雅黑", Font.PLAIN, 12)
+    exitItem.addActionListener { exitApplication() }
+    popupMenu.add(exitItem)
+    
+    trayIcon.addMouseListener(object : MouseAdapter() {
+        override fun mouseReleased(e: MouseEvent) {
+            if (e.isPopupTrigger) {
+                lockItem.text = if (isLocked) "解锁" else "锁定"
+                
+                popupMenu.setLocation(e.x, e.y - popupMenu.preferredSize.height)
+                popupMenu.isVisible = true
+            }
         }
-        
-        trayIcon.popupMenu = popup
-        trayIcon.addActionListener { frame.isVisible = !frame.isVisible }
-        
-        try {
-            tray.add(trayIcon)
-        } catch (e: AWTException) {
-            println("无法添加系统托盘图标: ${e.message}")
-        }
+    })
+    
+    trayIcon.addActionListener { frame.isVisible = !frame.isVisible }
+    
+    try {
+        tray.add(trayIcon)
+    } catch (e: AWTException) {
+        println("无法添加系统托盘图标: ${e.message}")
     }
+}
     
     private fun showSettingsDialog() {
         val dialog = JDialog(frame, "桌面歌词设置", true)
@@ -1787,4 +1796,5 @@ object DesktopLyrics {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
