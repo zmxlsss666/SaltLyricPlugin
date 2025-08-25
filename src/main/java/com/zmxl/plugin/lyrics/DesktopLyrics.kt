@@ -602,16 +602,18 @@ object DesktopLyrics {
                     addActionListener { showSettingsDialog() }
                 }
                 
-                // 最小化按钮
-                minimizeButton = createControlButton("−").apply {
-                    addActionListener {
-                        frame.isVisible = false
-                // 显示托盘消息
-                try {
-                    if (SystemTray.isSupported()) {
-                        val tray = SystemTray.getSystemTray()
-                        val trayIcons = tray.trayIcons
-                    if (trayIcons.isNotEmpty()) {
+// 修复最小化按钮 - 使用更直接的方法
+minimizeButton = createControlButton("−").apply {
+    addActionListener { 
+        // 直接设置窗口为不可见
+        frame.isVisible = false
+        
+        // 显示托盘消息
+        try {
+            if (SystemTray.isSupported()) {
+                val tray = SystemTray.getSystemTray()
+                val trayIcons = tray.trayIcons
+                if (trayIcons.isNotEmpty()) {
                     trayIcons[0].displayMessage(
                         "Salt Player 桌面歌词", 
                         "歌词窗口已隐藏，点击托盘图标可重新显示",
@@ -619,9 +621,16 @@ object DesktopLyrics {
                     )
                 }
             }
-                    } catch (e: Exception) {
-                        println("显示托盘消息失败: ${e.message}")
+        } catch (e: Exception) {
+            println("显示托盘消息失败: ${e.message}")
         }
+        
+        // 确保窗口不会因为其他事件而重新显示
+        // 添加一个临时标志来防止自动显示
+        isManuallyHidden = true
+        
+        // 设置一个定时器，在短暂时间后重置标志
+        Timer(1000) { isManuallyHidden = false }.start()
     }
 }
                 
@@ -1948,6 +1957,7 @@ private fun updateLyrics() {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
