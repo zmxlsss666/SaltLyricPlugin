@@ -1388,18 +1388,9 @@ class LyricsPanel : JPanel() {
             val textWidth = fm.stringWidth(currentLineScrollText)
             currentLineNeedsScroll = textWidth > width * 0.85
             
-            // 检查是否有翻译（下一行时间相同）
-            if (hasTranslation && currentLineIndex < parsedLyrics.size - 1 && 
-                parsedLyrics[currentLineIndex].time == parsedLyrics[currentLineIndex + 1].time) {
-                nextLineScrollText = parsedLyrics[currentLineIndex + 1].text
-                nextLineNeedsScroll = false
-            } else {
-                nextLineScrollText = ""
-                nextLineNeedsScroll = false
-            }
             
             // 如果需要滚动，启动计时器
-            if (currentLineNeedsScroll || nextLineNeedsScroll) {
+            if (currentLineNeedsScroll) {
                 startScrollTimer()
             }
         } else {
@@ -1421,17 +1412,6 @@ class LyricsPanel : JPanel() {
                 val textWidth = fm.stringWidth(currentLineScrollText)
                 
                 if (scrollOffset > textWidth + 50) {
-                    scrollOffset = -width
-                }
-                needsRepaint = true
-            }
-            
-            if (nextLineNeedsScroll) {
-                // 下一行使用相同的滚动偏移量
-                val nextFm = getFontMetrics(getFontForText(nextLineScrollText))
-                val nextTextWidth = nextFm.stringWidth(nextLineScrollText)
-                
-                if (scrollOffset > nextTextWidth + 50) {
                     scrollOffset = -width
                 }
                 needsRepaint = true
@@ -1712,4 +1692,5 @@ class LyricsPanel : JPanel() {
     
     data class LyricLine(val time: Long, val text: String)
 }
+
 
