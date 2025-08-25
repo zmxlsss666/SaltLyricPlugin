@@ -8,6 +8,7 @@ import java.awt.*
 import java.awt.event.*
 import java.awt.image.BufferedImage
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -22,7 +23,7 @@ object DesktopLyrics {
     private var dragStart: Point? = null
     private var resizeStart: Point? = null
     private var isResizing = false
-    private val resizeArea = 8 // 调整大小的区域宽度
+    private val resizeBorder = 8 // 调整大小的边框宽度
     
     private val timer = Timer(10) { updateLyrics() }
     private val gson = Gson()
@@ -76,6 +77,32 @@ object DesktopLyrics {
         frame.repaint()
     }
     
+    // 配置文件相关
+    private data class AppConfig(
+        var windowX: Int = 0,
+        var windowY: Int = 0,
+        var windowWidth: Int = 560,
+        var windowHeight: Int = 180,
+        var isLocked: Boolean = false,
+        var titleArtistFormat: Int = 0,
+        var chineseFontName: String = "微软雅黑",
+        var japaneseFontName: String = "MS Gothic",
+        var englishFontName: String = "Arial",
+        var fontSize: Int = 24,
+        var fontStyle: Int = Font.BOLD,
+        var lyricColor: Int = Color.WHITE.rgb,
+        var highlightColor: Int = Color(255, 215, 0).rgb,
+        var backgroundColor: Int = Color(0, 0, 0, 0).rgb,
+        var transparency: Float = 0.8f,
+        var animationSpeed: Int = 10,
+        var alignment: Int = 0, // 0: CENTER, 1: LEFT, 2: RIGHT
+        var useShadow: Boolean = true
+    )
+    
+    private var appConfig = AppConfig()
+    private val configDir = File(System.getenv("APPDATA") + File.separator + "Salt Player for Windows" + File.separator + "workshop")
+    private val configFile = File(configDir, "desktop_lyrics_config.json")
+    
     // JNA接口定义
     interface User32Ex : com.sun.jna.platform.win32.User32 {
         fun SetWindowCompositionAttribute(hWnd: WinDef.HWND, data: WindowCompositionAttributeData): Boolean
@@ -106,17 +133,110 @@ object DesktopLyrics {
     }
     
     fun start() {
+        loadConfig()
         setupUI()
         timer.start()
         backgroundTimer.start()
     }
     
     fun stop() {
+        saveConfig()
         timer.stop()
         backgroundTimer.stop()
         scrollTimer?.stop()
         disableAcrylicEffect()
         frame.dispose()
+    }
+    
+    // 加载配置文件
+    private fun loadConfig() {
+        try {
+            if (configFile.exists()) {
+                val json = configFile.readText()
+                appConfig = gson.fromJson(json, AppConfig::class.java)
+                
+                // 应用配置
+                frame.setSize(appConfig.windowWidth, appConfig.windowHeight)
+                frame.setLocation(appConfig.windowX, appConfig.windowY)
+                isLocked = appConfig.isLocked
+                titleArtistFormat = appConfig.titleArtistFormat
+                
+                // 字体设置
+                chineseFont = Font(appConfig.chineseFontName, appConfig.fontStyle, appConfig.fontSize)
+                japaneseFont = Font(appConfig.japaneseFontName, appConfig.fontStyle, appConfig.fontSize)
+                englishFont = Font(appConfig.englishFontName, appConfig.fontStyle, appConfig.fontSize)
+                lyricsPanel.setFonts(chineseFont, japaneseFont, englishFont)
+                
+                // 颜色设置
+                lyricsPanel.lyricColor = Color(appConfig.lyricColor)
+                lyricsPanel.highlightColor = Color(appConfig.highlightColor)
+                lyricsPanel.backgroundColor = Color(appConfig.backgroundColor)
+                lyricsPanel.transparency = appConfig.transparency
+                lyricsPanel.background = Color(
+                    lyricsPanel.backgroundColor.red,
+                    lyricsPanel.backgroundColor.green,
+                    lyricsPanel.backgroundColor.blue,
+                    (255 * lyricsPanel.transparency).roundToInt()
+                )
+                
+                // 其他设置
+                lyricsPanel.animationSpeed = appConfig.animationSpeed
+                lyricsPanel.alignment = when (appConfig.alignment) {
+                    1 -> LyricsPanel.Alignment.LEFT
+                    2 -> LyricsPanel.Alignment.RIGHT
+                    else -> LyricsPanel.Alignment.CENTER
+                }
+                lyricsPanel.useShadow = appConfig.useShadow
+            }
+        } catch (e: Exception) {
+            println("加载配置文件失败: ${e.message}")
+        }
+    }
+    
+    // 保存配置文件
+    private fun saveConfig() {
+        try {
+            // 更新配置
+            appConfig.windowX = frame.location.x
+            appConfig.windowY = frame.location.y
+            appConfig.windowWidth = frame.width
+            appConfig.windowHeight = frame.height
+            appConfig.isLocked = isLocked
+            appConfig.titleArtistFormat = titleArtistFormat
+            
+            // 字体设置
+            appConfig.chineseFontName = chineseFont.name
+            appConfig.japaneseFontName = japaneseFont.name
+            appConfig.englishFontName = englishFont.name
+            appConfig.fontSize = chineseFont.size
+            appConfig.fontStyle = chineseFont.style
+            
+            // 颜色设置
+            appConfig.lyricColor = lyricsPanel.lyricColor.rgb
+            appConfig.highlightColor = lyricsPanel.highlightColor.rgb
+            appConfig.backgroundColor = lyricsPanel.backgroundColor.rgb
+            appConfig.transparency = lyricsPanel.transparency
+            
+            // 其他设置
+            appConfig.animationSpeed = lyricsPanel.animationSpeed
+            appConfig.alignment = when (lyricsPanel.alignment) {
+                LyricsPanel.Alignment.LEFT -> 1
+                LyricsPanel.Alignment.RIGHT -> 2
+                else -> 0
+            }
+            appConfig.useShadow = lyricsPanel.useShadow
+            
+            // 确保目录存在
+            if (!configDir.exists()) {
+                configDir.mkdirs()
+            }
+            
+            // 保存到文件
+            val json = gson.toJson(appConfig)
+            configFile.writeText(json)
+        } catch (e: Exception) {
+            println("保存配置文件失败: ${e.message}")
+        }
     }
     
     // 启用Windows毛玻璃效果
@@ -207,9 +327,7 @@ object DesktopLyrics {
                 add(topPanel, BorderLayout.NORTH)
             }
             
-            // 设置窗口大小和位置
-            setSize(560, 180)
-            setLocationRelativeTo(null)
+            // 设置窗口大小和位置（已从配置文件加载）
             
             // 添加键盘快捷键
             setupKeyboardShortcuts()
@@ -218,10 +336,11 @@ object DesktopLyrics {
             addMouseListener(object : MouseAdapter() {
                 override fun mousePressed(e: MouseEvent) {
                     if (!isLocked) {
-                        if (isInResizeArea(e.point)) {
+                        val cursorType = getCursorType(e.point)
+                        if (cursorType != Cursor.DEFAULT_CURSOR) {
                             isResizing = true
                             resizeStart = e.point
-                            frame.cursor = Cursor.getPredefinedCursor(Cursor.SE_RESIZE_CURSOR)
+                            frame.cursor = Cursor.getPredefinedCursor(cursorType)
                         } else {
                             isDragging = true
                             dragStart = e.point
@@ -282,9 +401,45 @@ object DesktopLyrics {
                         if (isResizing && resizeStart != null) {
                             val dx = e.x - resizeStart!!.x
                             val dy = e.y - resizeStart!!.y
-                            val newWidth = maxOf(frame.width + dx, 300)
-                            val newHeight = maxOf(frame.height + dy, 100)
-                            frame.setSize(newWidth, newHeight)
+                            
+                            val cursorType = getCursorType(e.point)
+                            val newWidth = maxOf(frame.width + (if (cursorType == Cursor.E_RESIZE_CURSOR || cursorType == Cursor.SE_RESIZE_CURSOR || cursorType == Cursor.NE_RESIZE_CURSOR) dx else 0), 300)
+                            val newHeight = maxOf(frame.height + (if (cursorType == Cursor.S_RESIZE_CURSOR || cursorType == Cursor.SE_RESIZE_CURSOR || cursorType == Cursor.SW_RESIZE_CURSOR) dy else 0), 100)
+                            
+                            // 根据不同的调整方向调整窗口位置和大小
+                            when (cursorType) {
+                                Cursor.N_RESIZE_CURSOR -> {
+                                    val newY = frame.y + dy
+                                    setBounds(frame.x, newY, frame.width, newHeight)
+                                }
+                                Cursor.S_RESIZE_CURSOR -> {
+                                    setSize(frame.width, newHeight)
+                                }
+                                Cursor.E_RESIZE_CURSOR -> {
+                                    setSize(newWidth, frame.height)
+                                }
+                                Cursor.W_RESIZE_CURSOR -> {
+                                    val newX = frame.x + dx
+                                    setBounds(newX, frame.y, newWidth, frame.height)
+                                }
+                                Cursor.NE_RESIZE_CURSOR -> {
+                                    val newY = frame.y + dy
+                                    setBounds(frame.x, newY, newWidth, newHeight)
+                                }
+                                Cursor.NW_RESIZE_CURSOR -> {
+                                    val newX = frame.x + dx
+                                    val newY = frame.y + dy
+                                    setBounds(newX, newY, newWidth, newHeight)
+                                }
+                                Cursor.SE_RESIZE_CURSOR -> {
+                                    setSize(newWidth, newHeight)
+                                }
+                                Cursor.SW_RESIZE_CURSOR -> {
+                                    val newX = frame.x + dx
+                                    setBounds(newX, frame.y, newWidth, newHeight)
+                                }
+                            }
+                            
                             resizeStart = e.point
                         } else if (isDragging && dragStart != null) {
                             val currentLocation = location
@@ -324,13 +479,29 @@ object DesktopLyrics {
         }
     }
     
-    private fun isInResizeArea(point: Point): Boolean {
-        return point.x >= frame.width - resizeArea && point.y >= frame.height - resizeArea
+    private fun getCursorType(point: Point): Int {
+        val x = point.x
+        val y = point.y
+        val width = frame.width
+        val height = frame.height
+        
+        return when {
+            x < resizeBorder && y < resizeBorder -> Cursor.NW_RESIZE_CURSOR
+            x < resizeBorder && y > height - resizeBorder -> Cursor.SW_RESIZE_CURSOR
+            x > width - resizeBorder && y < resizeBorder -> Cursor.NE_RESIZE_CURSOR
+            x > width - resizeBorder && y > height - resizeBorder -> Cursor.SE_RESIZE_CURSOR
+            x < resizeBorder -> Cursor.W_RESIZE_CURSOR
+            x > width - resizeBorder -> Cursor.E_RESIZE_CURSOR
+            y < resizeBorder -> Cursor.N_RESIZE_CURSOR
+            y > height - resizeBorder -> Cursor.S_RESIZE_CURSOR
+            else -> Cursor.DEFAULT_CURSOR
+        }
     }
     
     private fun updateCursor(point: Point) {
-        frame.cursor = if (isInResizeArea(point)) {
-            Cursor.getPredefinedCursor(Cursor.SE_RESIZE_CURSOR)
+        val cursorType = getCursorType(point)
+        frame.cursor = if (cursorType != Cursor.DEFAULT_CURSOR) {
+            Cursor.getPredefinedCursor(cursorType)
         } else {
             Cursor.getDefaultCursor()
         }
@@ -1625,4 +1796,3 @@ object DesktopLyrics {
         
         data class LyricLine(val time: Long, val text: String)
     }
-    
