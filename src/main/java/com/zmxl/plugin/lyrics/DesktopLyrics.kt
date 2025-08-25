@@ -782,59 +782,93 @@ private fun setupSystemTray() {
     val image = createTrayIconImage()
     val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
     
-    // 使用Swing的JPopupMenu替代AWT的PopupMenu
-    val popupMenu = JPopupMenu()
+
+    val popupMenu = JPopupMenu().apply {
+
+        isLightWeightPopupEnabled = true
+    }
     
     // 添加显示/隐藏菜单项
-    val toggleItem = JMenuItem("显示/隐藏")
-    toggleItem.font = Font("微软雅黑", Font.PLAIN, 12)
-    toggleItem.addActionListener { frame.isVisible = !frame.isVisible }
+    val toggleItem = JMenuItem("显示/隐藏").apply {
+        font = Font("微软雅黑", Font.PLAIN, 12)
+        addActionListener { frame.isVisible = !frame.isVisible }
+    }
     popupMenu.add(toggleItem)
     
     // 添加锁定/解锁菜单项
-    val lockItem = JMenuItem(if (isLocked) "解锁" else "锁定")
-    lockItem.font = Font("微软雅黑", Font.PLAIN, 12)
-    lockItem.addActionListener { toggleLock() }
+    val lockItem = JMenuItem(if (isLocked) "解锁" else "锁定").apply {
+        font = Font("微软雅黑", Font.PLAIN, 12)
+        addActionListener { toggleLock() }
+    }
     popupMenu.add(lockItem)
     
     // 添加设置菜单项
-    val settingsItem = JMenuItem("设置")
-    settingsItem.font = Font("微软雅黑", Font.PLAIN, 12)
-    settingsItem.addActionListener { showSettingsDialog() }
+    val settingsItem = JMenuItem("设置").apply {
+        font = Font("微软雅黑", Font.PLAIN, 12)
+        addActionListener { showSettingsDialog() }
+    }
     popupMenu.add(settingsItem)
     
     popupMenu.addSeparator()
     
-    val exitItem = JMenuItem("退出")
-    exitItem.font = Font("微软雅黑", Font.PLAIN, 12)
-    exitItem.addActionListener { exitApplication() }
+    // 添加退出菜单项
+    val exitItem = JMenuItem("退出").apply {
+        font = Font("微软雅黑", Font.PLAIN, 12)
+        addActionListener { exitApplication() }
+    }
     popupMenu.add(exitItem)
     
+    // 添加全局鼠标监听器以确保点击其他地方时菜单隐藏
+    val menuWindowListener = object : MouseAdapter() {
+        override fun mousePressed(e: MouseEvent) {
+            if (popupMenu.isVisible && !SwingUtilities.isDescendantFrom(popupMenu, e.component)) {
+                popupMenu.setVisible(false)
+            }
+        }
+    }
+    
+    // 为所有窗口添加鼠标监听器
+    Frame.getFrames().forEach { frame ->
+        frame.addMouseListener(menuWindowListener)
+    }
+    
+    // 添加鼠标监听器以显示Swing弹出菜单
     trayIcon.addMouseListener(object : MouseAdapter() {
         override fun mouseReleased(e: MouseEvent) {
             if (e.isPopupTrigger) {
+                // 更新锁定/解锁菜单项文本
                 lockItem.text = if (isLocked) "解锁" else "锁定"
                 
-                popupMenu.setLocation(e.x, e.y - popupMenu.preferredSize.height)
-                popupMenu.isVisible = true
+                // 使用SwingUtilities确保在EDT中执行
+                SwingUtilities.invokeLater {
+                    // 显示弹出菜单
+                    val point = MouseInfo.getPointerInfo().location
+                    popupMenu.setLocation(point.x, point.y - popupMenu.preferredSize.height)
+                    popupMenu.isVisible = true
+                    popupMenu.requestFocus()
+                }
             }
         }
     })
     
-trayIcon.addActionListener { 
-    SwingUtilities.invokeLater {
-        frame.isVisible = !frame.isVisible
-        if (frame.isVisible) {
-            frame.toFront()
-        }
-    }
-}
+    // 添加左键点击显示/隐藏功能
+    trayIcon.addActionListener { frame.isVisible = !frame.isVisible }
     
     try {
         tray.add(trayIcon)
     } catch (e: AWTException) {
         println("无法添加系统托盘图标: ${e.message}")
     }
+    
+    // 添加窗口关闭时的清理代码
+    frame.addWindowListener(object : WindowAdapter() {
+        override fun windowClosed(e: WindowEvent) {
+            // 移除全局鼠标监听器
+            Frame.getFrames().forEach { frame ->
+                frame.removeMouseListener(menuWindowListener)
+            }
+        }
+    })
 }
     
     private fun showSettingsDialog() {
@@ -843,7 +877,6 @@ trayIcon.addActionListener {
         dialog.setSize(500, 500)
         dialog.setLocationRelativeTo(frame)
         
-        // 使用现代化外观
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
         } catch (e: Exception) {
@@ -1816,6 +1849,7 @@ trayIcon.addActionListener {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
