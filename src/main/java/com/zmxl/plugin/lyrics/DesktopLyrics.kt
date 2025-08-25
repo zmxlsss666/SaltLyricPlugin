@@ -602,10 +602,10 @@ object DesktopLyrics {
                     addActionListener { showSettingsDialog() }
                 }
                 
-                // 修复最小化按钮 - 现在真正最小化到任务栏
+                // 最小化按钮
                 minimizeButton = createControlButton("−").apply {
                     addActionListener { 
-                        frame.extendedState = Frame.ICONIFIED
+                        frame.isVisible = false
                     }
                 }
                 
@@ -1800,4 +1800,5 @@ object DesktopLyrics {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
