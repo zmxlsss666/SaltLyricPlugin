@@ -24,10 +24,12 @@ jobs:
 
     - name: Build with Gradle
       run: ./gradlew plugin
+      
+    - name: Add File
+      run: cp ./desktop_lyrics_config.json ./build/libs/
 
-
-    - name: Upload APK
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: plugin-zmxl-spw-control-1.0.0
-        path: build/libs/plugin-zmxl-spw-control-*.zip
+        name: SaltLyricPlugin
+        path: build/libs/*
