@@ -4,7 +4,7 @@
 *   桌面歌词显示：支持中文、日文、英文等多语言字体自动适配
 *   歌词翻译支持：自动识别并显示带翻译的歌词（原文 + 翻译合并显示）
 *   在线歌词获取：对于未内嵌歌词的歌曲，通过网易云、QQ、酷狗等在线音乐平台获取歌词
-*   HTTP API 接口：提供音乐控制及歌词获取接口，方便第三方集成
+*   HTTP API 接口：提供音乐控制及歌词获取接口，方便第三方集成[PS:真的会有人集成吗……]
 ## 安装方法
 1.  下载插件压缩包
 2.  解压放入%appdata%\Salt Player for Windows\workshop\
@@ -13,19 +13,19 @@
 ```
 gradlew plugin
 ```
-## 使用说明
+## 软件截图
 ### 桌面歌词
-*   插件启动后自动显示桌面歌词面板
-*   歌词会根据当前播放进度自动滚动和高亮
+#### 未锁定：
+![未锁定](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/1.png)
+#### 锁定
+![锁定](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/2.png)
+#### 设置
+![设置1](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/settings1.png)
+![设置2](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/settings2.png)
+![设置3](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/settings3.png)
 ### Web 控制界面
-1.  插件启动后会在本地启动 HTTP 服务（默认端口：35373）
-2.  打开浏览器访问 `http://localhost:35373` 即可进入控制界面
-3.  控制界面支持：
-*   查看当前播放歌曲信息
-*   控制播放 / 暂停、上一曲 / 下一曲
-*   调节音量
-*   查看和滚动歌词
-
+浏览器访问 `http://localhost:35373` 即可进入控制界面
+![Web控制界面](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/web.png)
 ## API 文档
 插件提供以下 HTTP API 接口，方便第三方应用集成：
 ### 1. 获取当前播放信息
