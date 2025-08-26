@@ -24,7 +24,7 @@ gradlew plugin
 ![设置2](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/settings2.png)
 ![设置3](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/settings3.png)
 ### Web 控制界面
-浏览器访问 `http://localhost:35373` 即可进入控制界面
+浏览器访问 `http://localhost:35373` 即可进入控制界面，（目前歌曲封面未使用歌曲内嵌封面，有概率无法获取）
 ![Web控制界面](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/web.png)
 ## API 文档
 插件提供以下 HTTP API 接口，方便第三方应用集成：
