@@ -20,6 +20,7 @@ import javax.swing.event.PopupMenuEvent
 
 
 object DesktopLyrics {
+    private var isManuallyHidden = false
     private val frame = JFrame()
     private val lyricsPanel = LyricsPanel()
     private var isDragging = false
@@ -800,8 +801,8 @@ private fun setupSystemTray() {
     // 创建一个透明的JWindow作为菜单容器
     val menuWindow = JWindow().apply {
         isAlwaysOnTop = true
-        background = Color(0, 0, 0, 0) // 完全透明
-        isFocusable = false // 修复：使用正确的属性名
+        background = Color(0, 0, 0, 0)
+        isFocusableWindowState = false
     }
     
     // 创建菜单面板
@@ -815,6 +816,13 @@ private fun setupSystemTray() {
     val toggleItem = createMenuItem("显示/隐藏") {
         frame.isVisible = !frame.isVisible
         menuWindow.isVisible = false
+        if (frame.isVisible) {
+            frame.toFront()
+            // 如果解锁状态，显示控制面板
+            if (!isLocked && frame.mousePosition != null) {
+                topPanel.isVisible = true
+            }
+        }
     }
     menuPanel.add(toggleItem)
     
@@ -895,7 +903,7 @@ private fun setupSystemTray() {
         override fun mouseReleased(e: MouseEvent) {
             if (e.isPopupTrigger) {
                 // 更新锁定/解锁菜单项文本
-                lockItem.text = if (isLocked) "解锁" else "锁定"
+                (lockItem as JButton).text = if (isLocked) "解锁" else "锁定"
                 
                 // 获取鼠标位置
                 val mousePos = MouseInfo.getPointerInfo().location
@@ -928,7 +936,16 @@ private fun setupSystemTray() {
     })
     
     // 添加左键点击显示/隐藏功能
-    trayIcon.addActionListener { frame.isVisible = !frame.isVisible }
+    trayIcon.addActionListener { 
+        frame.isVisible = !frame.isVisible
+        if (frame.isVisible) {
+            frame.toFront()
+            // 如果解锁状态，显示控制面板
+            if (!isLocked && frame.mousePosition != null) {
+                topPanel.isVisible = true
+            }
+        }
+    }
     
     try {
         tray.add(trayIcon)
@@ -945,7 +962,6 @@ private fun setupSystemTray() {
         }
     })
 }
-
 // 创建菜单项辅助函数
 private fun createMenuItem(text: String, action: () -> Unit): JButton {
     return JButton(text).apply {
@@ -1416,13 +1432,15 @@ private fun createMenuItem(text: String, action: () -> Unit): JButton {
     
 private fun updateLyrics() {
     try {
+        // 如果窗口被手动隐藏，则不更新内容
+        if (isManuallyHidden) {
+            return
+        }
+        
         // 获取当前播放信息
         val nowPlaying = getNowPlaying()
         if (nowPlaying == null) {
-            // 只有当窗口可见时才隐藏
-            if (frame.isVisible) {
-                frame.isVisible = false
-            }
+            frame.isVisible = false
             return
         }
         
@@ -1461,10 +1479,8 @@ private fun updateLyrics() {
         // 只有当有歌曲播放时才显示窗口
         frame.isVisible = true
     } catch (e: Exception) {
-        // 连接失败时，只有当窗口可见时才隐藏
-        if (frame.isVisible) {
-            frame.isVisible = false
-        }
+        // 连接失败时隐藏窗口
+        frame.isVisible = false
     }
 }
     
@@ -1957,6 +1973,7 @@ private fun updateLyrics() {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
