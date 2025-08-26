@@ -9,6 +9,10 @@
 1.  下载插件压缩包
 2.  解压放入%appdata%\Salt Player for Windows\workshop\
 3.  进入SPW→设置→创意工坊→模组管理→SaltLyricPlugin→启用，[初次使用必须启用后重启，否则会导致功能异常]
+## 编译
+```
+gradlew plugin
+```
 ## 使用说明
 ### 桌面歌词
 *   插件启动后自动显示桌面歌词面板
