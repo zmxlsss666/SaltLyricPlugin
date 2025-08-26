@@ -802,7 +802,7 @@ private fun setupSystemTray() {
     val menuWindow = JWindow().apply {
         isAlwaysOnTop = true
         background = Color(0, 0, 0, 0)
-        isFocusableWindowState = false
+        focusableWindowState = false
     }
     
     // 创建菜单面板
@@ -1973,6 +1973,7 @@ private fun updateLyrics() {
         
         data class LyricLine(val time: Long, val text: String)
     }
+
 
 
 
