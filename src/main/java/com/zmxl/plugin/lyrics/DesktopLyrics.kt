@@ -1809,33 +1809,69 @@ private fun updateLyrics() {
                 // 计算总毫秒数
                 val totalMillis = minutes * 60 * 1000 + seconds * 1000 + millisValue * 10
                 
-                if (text.isNotBlank()) {
+                // 检查是否为逐字歌词（包含时间戳标记）
+                if (text.contains(Regex("""\[(\d+):(\d+)(?:\.(\d+))?]|&lt;(\d+):(\d+)(?:\.(\d+))?&gt;"""))) {
+                    // 处理逐字歌词
+                    val wordByWordLines = parseWordByWordLyrics(line, totalMillis)
+                    tempLines.addAll(wordByWordLines)
+                } else if (text.isNotBlank()) {
                     tempLines.add(LyricLine(totalMillis, text.trim()))
                 }
             }
             
             // 按时间排序
-            val sortedLines = tempLines.sortedBy { it.time }
-            
-            // 合并时间相同的行（视为原文和翻译）
-            var i = 0
-            while (i < sortedLines.size) {
-                val currentLine = sortedLines[i]
-                
-                // 检查是否有下一行且时间相同
-                if (i + 1 < sortedLines.size && sortedLines[i + 1].time == currentLine.time) {
-                    // 合并两行，格式为"原文(翻译)"
-                    val combinedText = "${currentLine.text}(${sortedLines[i + 1].text})"
-                    lines.add(LyricLine(currentLine.time, combinedText))
-                    i += 2 // 跳过下一行
-                } else {
-                    lines.add(currentLine)
-                    i += 1
-                }
-            }
-            
-            return lines
+            return tempLines.sortedBy { it.time }
         }
+        
+        /**
+         * 解析逐字歌词
+         * 格式示例: [05:20.22]你好[05:23.22]椒盐音乐[05:24.22]
+         * 转换为:
+         * [05:20.22]你好
+         * [05:23.22]椒盐音乐
+         */
+		private fun parseWordByWordLyrics(line: String, lineStartTime: Long): List<LyricLine> {
+			val wordLines = mutableListOf<LyricLine>()
+    
+			// 匹配所有时间戳标记（包括方括号和尖括号格式）
+			val timestampPattern = Regex("""(?:\[|<)(\d+):(\d+)(?:\.(\d+))?(?:\]|>)""")
+    
+			// 找到所有时间戳的位置
+			val timestampMatches = timestampPattern.findAll(line)
+			val timestamps = timestampMatches.toList()
+    
+			if (timestamps.isEmpty()) {
+			return wordLines
+		}
+    
+    // 提取每个时间戳对应的文本部分
+    for (i in timestamps.indices) {
+        val currentMatch = timestamps[i]
+        val textStart = currentMatch.range.last + 1
+        val textEnd = if (i < timestamps.size - 1) {
+            timestamps[i + 1].range.first
+        } else {
+            line.length
+        }
+        
+        if (textStart < textEnd) {
+            val text = line.substring(textStart, textEnd).trim()
+            if (text.isNotEmpty()) {
+                val (min, sec, millis) = currentMatch.destructured
+                val minutes = min.toLong()
+                val seconds = sec.toLong()
+                val millisValue = millis.toLongOrNull() ?: 0
+                
+                // 计算时间戳的毫秒数
+                val timestampMillis = minutes * 60 * 1000 + seconds * 1000 + millisValue * 10
+                
+                wordLines.add(LyricLine(timestampMillis, text))
+            }
+        }
+    }
+    
+    return wordLines
+}
         
         private fun findCurrentLyricLine(): Int {
             if (parsedLyrics.isEmpty()) return -1
@@ -1988,19 +2024,3 @@ private fun updateLyrics() {
         
         data class LyricLine(val time: Long, val text: String)
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
