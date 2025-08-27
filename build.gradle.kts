@@ -23,13 +23,11 @@ dependencies {
     implementation("org.json:json:20210307")
     implementation(kotlin("stdlib-jdk8"))
     implementation("com.google.code.gson:gson:2.10.1")
-    implementation("org.apache.tika:tika-core:3.2.2")
-    implementation("org.apache.tika:tika-parsers:3.2.2")
-    implementation("org.apache.tika:tika-parsers-standard-package:3.2.2")
+    implementation("org.jaudiotagger:jaudiotagger:2.0.1")
 }
 val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
 val pluginId = "SaltLyricPlugin"
-val pluginVersion = "2.0.1"
+val pluginVersion = "2.0.2"
 val pluginProvider = "zmxl"
 
 tasks.named<Jar>("jar") {
@@ -52,17 +50,3 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
