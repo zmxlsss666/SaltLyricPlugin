@@ -154,12 +154,12 @@ gradlew plugin
     轻量级 Java Web 服务器，用于支撑本项目的 HTTP 服务运行。
     
     许可证：[Apache License 2.0](https://www.eclipse.org/jetty/licenses.html)
-*   **Apache Tika**
-    [https://tika.apache.org/](https://tika.apache.org/)
+*   **Jaudiotagger**
+    [https://bitbucket.org/ijabz/jaudiotagger](https://bitbucket.org/ijabz/jaudiotagger)
     
-    用于文本提取与处理，辅助实现歌词内容的解析与处理。
+    用于实现歌词内容的解析与处理。
     
-    许可证：[Apache License 2.0](https://tika.apache.org/license.html)
+    许可证：[Apache License 2.0](https://bitbucket.org/ijabz/jaudiotagger/src/master/license.txt)
 *   **Font Awesome**
     [https://fontawesome.com/](https://fontawesome.com/)
     
