@@ -159,7 +159,7 @@ gradlew plugin
     
     用于实现歌词内容的解析与处理。
     
-    许可证：[Apache License 2.0](https://bitbucket.org/ijabz/jaudiotagger/src/master/license.txt)
+    许可证：[GNU Lesser General Public License v2.1](https://bitbucket.org/ijabz/jaudiotagger/src/master/license.txt)
 *   **Font Awesome**
     [https://fontawesome.com/](https://fontawesome.com/)
     
