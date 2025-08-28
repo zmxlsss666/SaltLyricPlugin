@@ -18,8 +18,8 @@ dependencies {
     kapt("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
     implementation("org.eclipse.jetty:jetty-server:11.0.15")
     implementation("org.eclipse.jetty:jetty-servlet:11.0.15")
-    implementation("net.java.dev.jna:jna:5.10.0")
-    implementation("net.java.dev.jna:jna-platform:5.10.0")
+    compileOnly("net.java.dev.jna:jna:5.10.0")
+    compileOnly("net.java.dev.jna:jna-platform:5.10.0")
     implementation("org.json:json:20210307")
     implementation(kotlin("stdlib-jdk8"))
     implementation("com.google.code.gson:gson:2.10.1")
@@ -50,3 +50,4 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
