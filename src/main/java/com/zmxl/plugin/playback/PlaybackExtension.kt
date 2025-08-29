@@ -33,6 +33,17 @@ class SpwPlaybackExtension : PlaybackExtensionPoint {
     private val workshopApi: WorkshopApi
         get() = WorkshopApi.instance
 
+    // 添加一个标志来检测Workshop API是否可用
+    private val workshopApiAvailable by lazy {
+        try {
+            // 尝试访问Workshop API的方法来检查是否可用
+            WorkshopApi.instance.playback
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     override fun onStateChanged(state: PlaybackExtensionPoint.State) {
         PlaybackStateHolder.currentState = state
         
@@ -176,27 +187,38 @@ override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): St
         PlaybackStateHolder.setPosition(position)
     }
 
-    // 播放/暂停切换
+    // 播放/暂停切换 - 使用WorkshopApi
     fun togglePlayback() {
-        // 使用 Workshop API 切换播放状态
-        // 注意：WorkshopApi 目前没有直接提供播放/暂停方法
-        // 这里需要根据实际情况实现
-        val newState = !PlaybackStateHolder.isPlaying
-        PlaybackStateHolder.isPlaying = newState
+        try {
+            if (workshopApiAvailable) {
+                if (PlaybackStateHolder.isPlaying) {
+                    WorkshopApi.instance.playback.pause()
+                } else {
+                    WorkshopApi.instance.playback.play()
+                }
+            } else {
+                // 回退到旧的实现方式
+                val newState = !PlaybackStateHolder.isPlaying
+                PlaybackStateHolder.isPlaying = newState
+                // 这里可以添加实际的播放/暂停控制逻辑
+            }
+            // 状态会在回调中自动更新
+        } catch (e: Exception) {
+            println("播放/暂停操作失败: ${e.message}")
+            e.printStackTrace()
+        }
     }
 
-    // 下一曲功能实现
+    // 下一曲功能实现 - 使用WorkshopApi
     fun next() {
         try {
             println("执行下一曲操作")
-            // 使用 Workshop API 进行下一曲操作
-            // 注意：WorkshopApi 目前没有直接提供下一曲方法
-            // 这里需要根据实际情况实现
-            
-            // 更新当前媒体信息（假设切换后会自动更新，这里可根据实际情况调整）
-            val newMedia = PlaybackStateHolder.currentMedia
-            if (newMedia != null) {
-                println("切换到下一曲: ${newMedia.title}")
+            if (workshopApiAvailable) {
+                WorkshopApi.instance.playback.next()
+            } else {
+                // 回退到旧的实现方式
+                // 这里可以添加实际的下一曲控制逻辑
+                println("下一曲操作（旧方式）")
             }
         } catch (e: Exception) {
             println("下一曲操作失败: ${e.message}")
@@ -204,18 +226,16 @@ override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): St
         }
     }
 
-    // 上一曲功能实现
+    // 上一曲功能实现 - 使用WorkshopApi
     fun previous() {
         try {
             println("执行上一曲操作")
-            // 使用 Workshop API 进行上一曲操作
-            // 注意：WorkshopApi 目前没有直接提供上一曲方法
-            // 这里需要根据实际情况实现
-            
-            // 更新当前媒体信息
-            val newMedia = PlaybackStateHolder.currentMedia
-            if (newMedia != null) {
-                println("切换到上一曲: ${newMedia.title}")
+            if (workshopApiAvailable) {
+                WorkshopApi.instance.playback.previous()
+            } else {
+                // 回退到旧的实现方式
+                // 这里可以添加实际的上一曲控制逻辑
+                println("上一曲操作（旧方式）")
             }
         } catch (e: Exception) {
             println("上一曲操作失败: ${e.message}")
@@ -243,6 +263,3 @@ override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): St
         }
     }
 }
-
-
-

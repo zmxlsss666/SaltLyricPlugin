@@ -18,6 +18,7 @@ package com.zmxl.plugin.control
 import com.sun.jna.*
 import com.sun.jna.platform.win32.*
 import com.sun.jna.win32.W32APIOptions
+import com.xuncorp.spw.workshop.api.WorkshopApi
 import com.zmxl.plugin.playback.PlaybackStateHolder
 import com.zmxl.plugin.playback.SpwPlaybackExtension
 import java.util.concurrent.Executors
@@ -42,16 +43,33 @@ object SmtcController {
     private val APPCOMMAND_VOLUME_MUTE = 8
     private val CW_USEDEFAULT = 0x80000000.toInt()
 
+    // 添加一个标志来检测Workshop API是否可用
+    private var workshopApiAvailable = false
+
     fun init() {
         if (isRunning) return
         
         isRunning = true
+        
+        // 检查Workshop API是否可用
+        workshopApiAvailable = checkWorkshopApiAvailable()
+        
         registerWindowClass()
         createWindow()
         startMessageLoop()
         registerMediaKeys()
         
-        println("SMTC控制器初始化完成")
+        println("SMTC控制器初始化完成，Workshop API ${if (workshopApiAvailable) "可用" else "不可用"}")
+    }
+
+    private fun checkWorkshopApiAvailable(): Boolean {
+        return try {
+            // 尝试访问Workshop API的方法来检查是否可用
+            WorkshopApi.instance.playback
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private fun registerWindowClass() {
@@ -127,9 +145,7 @@ object SmtcController {
         when (command) {
             // 处理播放/暂停命令
             APPCOMMAND_MEDIA_PLAY_PAUSE -> {
-                playbackExtension.togglePlayback()
-                // 同步更新播放状态到状态持有者
-                PlaybackStateHolder.isPlaying = !PlaybackStateHolder.isPlaying
+                togglePlayback()
             }
             // 处理下一曲命令
             APPCOMMAND_MEDIA_NEXTTRACK -> handleNextTrack()
@@ -151,12 +167,42 @@ object SmtcController {
         }
     }
 
+    // 使用WorkshopApi实现播放/暂停切换
+    private fun togglePlayback() {
+        try {
+            if (workshopApiAvailable) {
+                // 尝试使用Workshop API
+                if (PlaybackStateHolder.isPlaying) {
+                    WorkshopApi.instance.playback.pause()
+                } else {
+                    WorkshopApi.instance.playback.play()
+                }
+            } else {
+                // 回退到旧的实现方式
+                playbackExtension.togglePlayback()
+                // 同步更新播放状态到状态持有者
+                PlaybackStateHolder.isPlaying = !PlaybackStateHolder.isPlaying
+            }
+            // 状态会在回调中自动更新
+        } catch (e: Exception) {
+            println("播放/暂停操作失败: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
     // 实现实际下一曲逻辑
     fun handleNextTrack() {
         try {
             println("执行下一曲操作")
-            // 调用播放扩展的下一曲方法
-            playbackExtension.next()
+            
+            if (workshopApiAvailable) {
+                // 使用WorkshopApi的下一曲方法
+                WorkshopApi.instance.playback.next()
+            } else {
+                // 回退到旧的实现方式
+                playbackExtension.next()
+            }
+            
             // 更新当前媒体信息（假设切换后会自动更新，这里可根据实际情况调整）
             val newMedia = PlaybackStateHolder.currentMedia
             if (newMedia != null) {
@@ -172,8 +218,15 @@ object SmtcController {
     fun handlePreviousTrack() {
         try {
             println("执行上一曲操作")
-            // 调用播放扩展的上一曲方法
-            playbackExtension.previous()
+            
+            if (workshopApiAvailable) {
+                // 使用WorkshopApi的上一曲方法
+                WorkshopApi.instance.playback.previous()
+            } else {
+                // 回退到旧的实现方式
+                playbackExtension.previous()
+            }
+            
             // 更新当前媒体信息
             val newMedia = PlaybackStateHolder.currentMedia
             if (newMedia != null) {
@@ -245,4 +298,3 @@ object SmtcController {
         }
     }
 }
-

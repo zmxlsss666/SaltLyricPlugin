@@ -14,8 +14,8 @@ kotlin {
 }
 
 dependencies {
-    compileOnly("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
-    kapt("com.github.Moriafly:spw-workshop-api:0.1.0-dev08")
+    compileOnly("com.github.Moriafly:spw-workshop-api:0.1.0-dev10")
+    kapt("com.github.Moriafly:spw-workshop-api:0.1.0-dev10")
     implementation("org.eclipse.jetty:jetty-server:11.0.15")
     implementation("org.eclipse.jetty:jetty-servlet:11.0.15")
     compileOnly("net.java.dev.jna:jna:5.10.0")
@@ -27,7 +27,7 @@ dependencies {
 }
 val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
 val pluginId = "SaltLyricPlugin"
-val pluginVersion = "2.0.5"
+val pluginVersion = "2.1.0"
 val pluginProvider = "zmxl"
 
 tasks.named<Jar>("jar") {

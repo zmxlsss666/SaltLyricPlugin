@@ -1,3 +1,4 @@
+@file:OptIn(UnstableSpwWorkshopApi::class)
 /*
  * Copyright 2025 zmxl
  *
@@ -20,6 +21,8 @@ import org.pf4j.PluginWrapper
 import com.zmxl.plugin.server.HttpServer
 import com.zmxl.plugin.control.SmtcController
 import com.zmxl.plugin.lyrics.DesktopLyrics
+import com.xuncorp.spw.workshop.api.WorkshopApi
+import com.xuncorp.spw.workshop.api.UnstableSpwWorkshopApi
 
 class SpwControlPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
     private lateinit var httpServer: HttpServer
@@ -33,6 +36,16 @@ class SpwControlPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
         
         // 启动桌面歌词应用
         lyricsApp = DesktopLyrics
+        
+        // 初始化ConfigManager并传递给DesktopLyrics
+        try {
+            val configManager = WorkshopApi.instance.manager.createConfigManager(wrapper.pluginId)
+            lyricsApp?.setConfigManager(configManager)
+        } catch (e: Exception) {
+            println("Failed to create ConfigManager: ${e.message}")
+            // 如果无法创建ConfigManager，DesktopLyrics将使用旧式配置文件
+        }
+        
         lyricsApp?.start()
 
         println("SPW Control Plugin started with HTTP server on port 35373")
@@ -50,4 +63,3 @@ class SpwControlPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
         println("SPW Control Plugin stopped")
     }
 }
-
