@@ -29,8 +29,8 @@ val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
 val pluginId = "SaltLyricPlugin"
 val pluginVersion = "2.1.0"
 val pluginProvider = "zmxl"
-val Plugin-Has-Config = "true"
-val Plugin-Open-Source-Url = "https://github.com/zmxlsss666/SaltLyricPlugin"
+val PluginHasConfig = "true"
+val PluginOpenSourceUrl = "https://github.com/zmxlsss666/SaltLyricPlugin"
 
 tasks.named<Jar>("jar") {
     manifest {
@@ -52,6 +52,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
