@@ -38,6 +38,8 @@ tasks.named<Jar>("jar") {
         attributes["Plugin-Id"] = pluginId
         attributes["Plugin-Version"] = pluginVersion
         attributes["Plugin-Provider"] = pluginProvider
+        attributes["Plugin-Has-Config"] = PluginHasConfig
+        attributes["Plugin-Open-Source-Url"] = PluginOpenSourceUrl
     }
 }
 
@@ -52,6 +54,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
