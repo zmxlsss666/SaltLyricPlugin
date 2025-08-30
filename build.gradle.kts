@@ -29,8 +29,8 @@ val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
 val pluginId = "SaltLyricPlugin"
 val pluginVersion = "2.1.0"
 val pluginProvider = "zmxl"
-var Plugin-Has-Config = "true"
-var Plugin-Open-Source-Url = "https://github.com/zmxlsss666/SaltLyricPlugin"
+val Plugin-Has-Config = "true"
+val Plugin-Open-Source-Url = "https://github.com/zmxlsss666/SaltLyricPlugin"
 
 tasks.named<Jar>("jar") {
     manifest {
