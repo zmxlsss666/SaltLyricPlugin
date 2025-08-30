@@ -23,7 +23,7 @@ dependencies {
     implementation("org.json:json:20210307")
     implementation(kotlin("stdlib-jdk8"))
     implementation("com.google.code.gson:gson:2.10.1")
-    implementation("org.jaudiotagger:jaudiotagger:2.0.1")
+    compileOnly("org.jaudiotagger:jaudiotagger:2.0.1")
 }
 val pluginClass = "com.zmxl.plugin.SpwControlPlugin"
 val pluginId = "SaltLyricPlugin"
@@ -50,5 +50,6 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
