@@ -18,6 +18,7 @@ gradlew plugin
 #### 未锁定：
 ![未锁定](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/1.png)
 #### 锁定
+锁定后可在托盘菜单中解锁
 ![锁定](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/2.png)
 #### 设置
 ![设置1](https://raw.githubusercontent.com/zmxlsss666/SaltLyricPlugin/refs/heads/main/images/settings1.png)
