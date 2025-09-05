@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@file:OptIn(UnstableSpwWorkshopApi::class)
 package com.zmxl.plugin
 
 import org.pf4j.Plugin
@@ -21,6 +22,7 @@ import com.zmxl.plugin.server.HttpServer
 import com.zmxl.plugin.control.SmtcController
 import com.zmxl.plugin.lyrics.DesktopLyrics
 import com.xuncorp.spw.workshop.api.WorkshopApi
+import com.xuncorp.spw.workshop.api.UnstableSpwWorkshopApi
 
 class SpwControlPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
     private lateinit var httpServer: HttpServer
@@ -80,3 +82,4 @@ class SpwControlPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
         println("SPW Control Plugin 已完全停止")
     }
 }
+
