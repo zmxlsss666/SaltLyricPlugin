@@ -5,62 +5,28 @@
       "config": "desktop_lyrics_config.json",
       "preferences": [
         {
-          "key": "chinese_font_name",
-          "type": "list",
-          "title": "中文字体",
-          "entries": ["微软雅黑", "宋体", "黑体", "楷体", "仿宋"],
-          "entry_values": ["微软雅黑", "宋体", "黑体", "楷体", "仿宋"],
-          "default_value": "微软雅黑"
+          "key": "isLocked",
+          "type": "switch",
+          "title": "锁定位置",
+          "summary": "锁定歌词窗口位置防止误操作",
+          "default_value": false
         },
         {
-          "key": "japanese_font_name",
+          "key": "titleArtistFormat",
           "type": "list",
-          "title": "日文字体",
-          "entries": ["MS Gothic", "MS PGothic", "Meiryo", "Yu Gothic"],
-          "entry_values": ["MS Gothic", "MS PGothic", "Meiryo", "Yu Gothic"],
-          "default_value": "MS Gothic"
+          "title": "标题-艺术家格式",
+          "summary": "选择标题和艺术家的显示格式",
+          "entries": ["歌名 - 歌手", "歌手 - 歌名"],
+          "entry_values": [0, 1],
+          "default_value": 0
         },
         {
-          "key": "english_font_name",
-          "type": "list",
-          "title": "英文字体",
-          "entries": ["Arial", "Times New Roman", "Courier New", "Verdana"],
-          "entry_values": ["Arial", "Times New Roman", "Courier New", "Verdana"],
-          "default_value": "Arial"
-        },
-        {
-          "key": "font_size",
+          "key": "fontSize",
           "type": "seekbar",
           "title": "字体大小",
-          "default_value": 24.0,
-          "min": 8.0,
-          "max": 48.0
-        },
-        {
-          "key": "font_style",
-          "type": "list",
-          "title": "字体样式",
-          "entries": ["普通", "粗体", "斜体"],
-          "entry_values": ["0", "1", "2"],
-          "default_value": "1"
-        },
-        {
-          "key": "lyric_color",
-          "type": "edittext",
-          "title": "歌词颜色",
-          "default_value": "#FFFFFF"
-        },
-        {
-          "key": "highlight_color",
-          "type": "edittext",
-          "title": "高亮颜色",
-          "default_value": "#FFD700"
-        },
-        {
-          "key": "background_color",
-          "type": "edittext",
-          "title": "背景颜色",
-          "default_value": "#000000B4"
+          "default_value": 24,
+          "min": 12,
+          "max": 36
         },
         {
           "key": "transparency",
@@ -71,34 +37,32 @@
           "max": 1.0
         },
         {
-          "key": "animation_speed",
-          "type": "seekbar",
-          "title": "动画速度",
-          "default_value": 10.0,
-          "min": 1.0,
-          "max": 20.0
+          "key": "lyricColor",
+          "type": "edittext",
+          "title": "歌词颜色",
+          "summary": "设置歌词颜色（RGB值）",
+          "default_value": "#FFFFFF"
         },
         {
-          "key": "alignment",
-          "type": "list",
-          "title": "歌词对齐",
-          "entries": ["居中", "左对齐", "右对齐"],
-          "entry_values": ["0", "1", "2"],
-          "default_value": "0"
+          "key": "highlightColor",
+          "type": "edittext",
+          "title": "高亮颜色",
+          "summary": "设置高亮歌词颜色（RGB值）",
+          "default_value": "#FFD700"
         },
         {
-          "key": "title_artist_format",
-          "type": "list",
-          "title": "标题-艺术家格式",
-          "entries": ["歌名 - 歌手", "歌手 - 歌名"],
-          "entry_values": ["0", "1"],
-          "default_value": "0"
+          "key": "backgroundColor",
+          "type": "edittext",
+          "title": "背景颜色",
+          "summary": "设置背景颜色（RGB值）",
+          "default_value": "#000000"
         },
         {
-          "key": "use_shadow",
-          "type": "switch",
-          "title": "文字阴影效果",
-          "default_value": true
+          "type": "button",
+          "title": "打开高级设置",
+          "summary": "打开完整设置对话框",
+          "arrow_type": "link",
+          "on_click": "com.zmxl.plugin.lyrics.DesktopLyrics.showSettingsDialog"
         }
       ]
     }
