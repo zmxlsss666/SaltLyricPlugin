@@ -24,9 +24,6 @@ jobs:
 
     - name: Build with Gradle
       run: ./gradlew plugin
-      
-    - name: Add File
-      run: cp ./desktop_lyrics_config.json ./build/libs/
 
     - name: Upload
       uses: actions/upload-artifact@v4
