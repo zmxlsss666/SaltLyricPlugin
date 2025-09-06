@@ -573,7 +573,7 @@ object DesktopLyrics {
                 }
             })
             // 添加窗口状态监听器
-            addWindowStateListener { e ->
+            addWindowStateListener { e: WindowEvent ->
                 if (e.newState == Frame.NORMAL) {
                     updateLyrics()
                     lyricsPanel.repaint()
@@ -2084,3 +2084,4 @@ class LyricsPanel : JPanel() {
         }
     }
 }
+
