@@ -30,10 +30,8 @@ class SpwControlPlugin(wrapper: PluginWrapper) : Plugin(wrapper) {
         println("SPW Control Plugin 开始启动...")
         // 初始化ConfigManager
         try {
-            // 使用正确的插件ID
-            val pluginId = "SaltLyricPlugin"
-            val configManager = WorkshopApi.instance.manager.createConfigManager(pluginId)
-            println("ConfigManager 初始化成功，插件ID: $pluginId")
+            val configManager = WorkshopApi.instance.manager.createConfigManager(wrapper.pluginId)
+            println("ConfigManager 初始化成功")
             // 启动桌面歌词应用并传递ConfigManager
             lyricsApp = DesktopLyrics
             lyricsApp?.setConfigManager(configManager)
