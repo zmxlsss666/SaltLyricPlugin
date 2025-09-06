@@ -45,6 +45,7 @@ object DesktopLyrics {
     private var isResizing = false
     private val resizeBorder = 8
     private val timer = Timer(10) { updateLyrics() }
+    private val configMonitorTimer = Timer(100) { checkConfigChanges() } // 配置监控定时器
     private val gson = Gson()
     private var currentSongId = ""
     private var lastLyricUrl = ""
@@ -111,13 +112,13 @@ object DesktopLyrics {
     // ConfigManager 支持
     private lateinit var configManager: ConfigManager
     private lateinit var configHelper: ConfigHelper
-// JNA接口定义
-interface User32Ex : com.sun.jna.platform.win32.User32 {
-    fun SetWindowCompositionAttribute(hWnd: WinDef.HWND, data: WindowCompositionAttributeData): Boolean  // 添加参数名称 "data"
-    companion object {
-        val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java) as User32Ex
+    // JNA接口定义
+    interface User32Ex : com.sun.jna.platform.win32.User32 {
+        fun SetWindowCompositionAttribute(hWnd: WinDef.HWND,  WindowCompositionAttributeData): Boolean
+        companion object {
+            val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java) as User32Ex
+        }
     }
-}
     // Windows API常量
     private val ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
     private val WCA_ACCENT_POLICY = 19
@@ -233,15 +234,64 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
         setupUI()
         timer.start()
         backgroundTimer.start()
+        configMonitorTimer.start() // 启动配置监控定时器
     }
     fun stop() {
         saveConfig()
         timer.stop()
         backgroundTimer.stop()
+        configMonitorTimer.stop() // 停止配置监控定时器
         scrollTimer?.stop()
         disableAcrylicEffect()
         frame.dispose()
     }
+    
+    // 新增：检查配置是否变化
+    private fun checkConfigChanges() {
+        try {
+            if (::configHelper.isInitialized) {
+                // 检查关键配置项是否变化
+                val newIsLocked = configHelper.get("isLocked", appConfig.isLocked)
+                val newTitleArtistFormat = configHelper.get("titleArtistFormat", appConfig.titleArtistFormat)
+                val newChineseFontName = configHelper.get("chineseFontName", appConfig.chineseFontName)
+                val newJapaneseFontName = configHelper.get("japaneseFontName", appConfig.japaneseFontName)
+                val newEnglishFontName = configHelper.get("englishFontName", appConfig.englishFontName)
+                val newFontSize = configHelper.get("fontSize", appConfig.fontSize)
+                val newFontStyle = configHelper.get("fontStyle", appConfig.fontStyle)
+                val newLyricColor = configHelper.get("lyricColor", appConfig.lyricColor)
+                val newHighlightColor = configHelper.get("highlightColor", appConfig.highlightColor)
+                val newBackgroundColor = configHelper.get("backgroundColor", appConfig.backgroundColor)
+                val newTransparency = configHelper.get("transparency", appConfig.transparency)
+                val newAnimationSpeed = configHelper.get("animationSpeed", appConfig.animationSpeed)
+                val newAlignment = configHelper.get("alignment", appConfig.alignment)
+                val newUseShadow = configHelper.get("useShadow", appConfig.useShadow)
+                
+                // 检查是否有配置变化
+                if (newIsLocked != appConfig.isLocked ||
+                    newTitleArtistFormat != appConfig.titleArtistFormat ||
+                    newChineseFontName != appConfig.chineseFontName ||
+                    newJapaneseFontName != appConfig.japaneseFontName ||
+                    newEnglishFontName != appConfig.englishFontName ||
+                    newFontSize != appConfig.fontSize ||
+                    newFontStyle != appConfig.fontStyle ||
+                    newLyricColor != appConfig.lyricColor ||
+                    newHighlightColor != appConfig.highlightColor ||
+                    newBackgroundColor != appConfig.backgroundColor ||
+                    Math.abs(newTransparency - appConfig.transparency) > 0.01f ||
+                    newAnimationSpeed != appConfig.animationSpeed ||
+                    newAlignment != appConfig.alignment ||
+                    newUseShadow != appConfig.useShadow) {
+                    
+                    println("检测到配置变化，重新加载配置...")
+                    // 重新加载配置
+                    loadConfig()
+                }
+            }
+        } catch (e: Exception) {
+            println("检查配置变化时出错: ${e.message}")
+        }
+    }
+    
     // 加载配置文件
     private fun loadConfig() {
         try {
@@ -308,10 +358,44 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                 else -> LyricsPanel.Alignment.CENTER
             }
             lyricsPanel.useShadow = appConfig.useShadow
+            
+            // 更新UI
+            updateUIForConfigChanges()
         } catch (e: Exception) {
             println("加载配置文件失败: ${e.message}")
         }
     }
+    
+    // 新增：更新UI以反映配置变化
+    private fun updateUIForConfigChanges() {
+        // 更新锁定状态
+        if (isLocked) {
+            lockButton.text = "🔒"
+            topPanel.isVisible = false
+            scrollTimer?.stop()
+            disableAcrylicEffect()
+        } else {
+            lockButton.text = "🔓"
+            // 如果鼠标在窗口内，启用毛玻璃效果
+            if (frame.mousePosition != null) {
+                enableAcrylicEffect(200)
+            }
+            // 如果文本需要滚动，重新启动滚动计时器
+            if (scrollText.isNotEmpty()) {
+                startScrollTimer()
+            }
+        }
+        
+        // 更新标题-艺术家显示格式
+        val nowPlaying = getNowPlaying()
+        if (nowPlaying != null) {
+            updateTitleArtistDisplay(nowPlaying.title ?: "", nowPlaying.artist ?: "")
+        }
+        
+        // 重绘歌词面板
+        lyricsPanel.repaint()
+    }
+    
     // 保存配置文件
     private fun saveConfig() {
         try {
@@ -572,7 +656,7 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                     }
                 }
             })
-            // 添加窗口状态监听器
+            // 添加窗口状态监听器 - 修复：显式指定参数类型
             addWindowStateListener { e: WindowEvent ->
                 if (e.newState == Frame.NORMAL) {
                     updateLyrics()
@@ -1307,6 +1391,13 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                     japaneseFont = Font(japaneseFontName, fontStyle, fontSize)
                     englishFont = Font(englishFontName, fontStyle, fontSize)
                     lyricsPanel.setFonts(chineseFont, japaneseFont, englishFont)
+                    // 立即应用设置到配置
+                    appConfig.chineseFontName = chineseFont.name
+                    appConfig.japaneseFontName = japaneseFont.name
+                    appConfig.englishFontName = englishFont.name
+                    appConfig.fontSize = chineseFont.size
+                    appConfig.fontStyle = chineseFont.style
+                    saveConfig()
                 }
             }
             add(applyButton, gbc)
@@ -1346,6 +1437,9 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                     if (color != null) {
                         background = color
                         lyricsPanel.lyricColor = color
+                        // 立即应用设置到配置
+                        appConfig.lyricColor = color.rgb
+                        saveConfig()
                     }
                 }
             }
@@ -1366,6 +1460,9 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                     if (color != null) {
                         background = color
                         lyricsPanel.highlightColor = color
+                        // 立即应用设置到配置
+                        appConfig.highlightColor = color.rgb
+                        saveConfig()
                     }
                 }
             }
@@ -1390,6 +1487,9 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                             color.red, color.green, color.blue,
                             (255 * lyricsPanel.transparency).roundToInt()
                         )
+                        // 立即应用设置到配置
+                        appConfig.backgroundColor = color.rgb
+                        saveConfig()
                     }
                 }
             }
@@ -1428,6 +1528,9 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                     val bg = lyricsPanel.backgroundColor
                     lyricsPanel.background = Color(bg.red, bg.green, bg.blue, (255 * lyricsPanel.transparency).roundToInt())
                     lyricsPanel.repaint()
+                    // 立即应用设置到配置
+                    appConfig.transparency = lyricsPanel.transparency
+                    saveConfig()
                 }
             }
             add(transparencySlider, gbc)
@@ -1442,6 +1545,9 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
             val animationSlider = JSlider(1, 20, lyricsPanel.animationSpeed).apply {
                 addChangeListener {
                     lyricsPanel.animationSpeed = value
+                    // 立即应用设置到配置
+                    appConfig.animationSpeed = lyricsPanel.animationSpeed
+                    saveConfig()
                 }
             }
             add(animationSlider, gbc)
@@ -1470,6 +1576,13 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                         2 -> LyricsPanel.Alignment.RIGHT
                         else -> LyricsPanel.Alignment.CENTER
                     }
+                    // 立即应用设置到配置
+                    appConfig.alignment = when (selectedIndex) {
+                        1 -> 1
+                        2 -> 2
+                        else -> 0
+                    }
+                    saveConfig()
                 }
             }
             add(alignmentCombo, gbc)
@@ -1494,6 +1607,9 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                     if (nowPlaying != null) {
                         updateTitleArtistDisplay(nowPlaying.title ?: "", nowPlaying.artist ?: "")
                     }
+                    // 立即应用设置到配置
+                    appConfig.titleArtistFormat = titleArtistFormat
+                    saveConfig()
                 }
             }
             add(formatCombo, gbc)
@@ -1510,6 +1626,9 @@ interface User32Ex : com.sun.jna.platform.win32.User32 {
                 addActionListener {
                     lyricsPanel.useShadow = isSelected
                     lyricsPanel.repaint()
+                    // 立即应用设置到配置
+                    appConfig.useShadow = lyricsPanel.useShadow
+                    saveConfig()
                 }
             }
             add(shadowCheckBox, gbc)
@@ -2084,5 +2203,3 @@ class LyricsPanel : JPanel() {
         }
     }
 }
-
-
