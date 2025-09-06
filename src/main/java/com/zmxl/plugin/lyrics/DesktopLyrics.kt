@@ -156,133 +156,134 @@ object DesktopLyrics {
         frame.dispose()
     }
     // 加载配置文件
-    private fun loadConfig() {
-        try {
-            if (::configHelper.isInitialized) {
-                // 使用 ConfigManager 加载配置 - 直接获取正确类型的值
-                appConfig.windowX = configHelper.get("windowX", appConfig.windowX)
-                appConfig.windowY = configHelper.get("windowY", appConfig.windowY)
-                appConfig.windowWidth = configHelper.get("windowWidth", appConfig.windowWidth)
-                appConfig.windowHeight = configHelper.get("windowHeight", appConfig.windowHeight)
-                appConfig.isLocked = configHelper.get("isLocked", appConfig.isLocked)
-                appConfig.titleArtistFormat = configHelper.get("titleArtistFormat", appConfig.titleArtistFormat)
-                // 字体设置
-                appConfig.chineseFontName = configHelper.get("chineseFontName", appConfig.chineseFontName)
-                appConfig.japaneseFontName = configHelper.get("japaneseFontName", appConfig.japaneseFontName)
-                appConfig.englishFontName = configHelper.get("englishFontName", appConfig.englishFontName)
-                appConfig.fontSize = configHelper.get("fontSize", appConfig.fontSize)
-                appConfig.fontStyle = configHelper.get("fontStyle", appConfig.fontStyle)
-                // 颜色设置 - 直接获取整数值
-                appConfig.lyricColor = configHelper.get("lyricColor", appConfig.lyricColor)
-                appConfig.highlightColor = configHelper.get("highlightColor", appConfig.highlightColor)
-                appConfig.backgroundColor = configHelper.get("backgroundColor", appConfig.backgroundColor)
-                // 透明度 - 直接获取float值
-                appConfig.transparency = configHelper.get("transparency", appConfig.transparency)
-                // 其他设置
-                appConfig.animationSpeed = configHelper.get("animationSpeed", appConfig.animationSpeed)
-                appConfig.alignment = configHelper.get("alignment", appConfig.alignment)
-                appConfig.useShadow = configHelper.get("useShadow", appConfig.useShadow)
-            } else if (configFile.exists()) {
-                // 回退到文件配置
-                val json = configFile.readText()
-                appConfig = gson.fromJson(json, AppConfig::class.java)
-            }
-            // 应用配置
-            frame.setSize(appConfig.windowWidth, appConfig.windowHeight)
-            frame.setLocation(appConfig.windowX, appConfig.windowY)
-            isLocked = appConfig.isLocked
-            titleArtistFormat = appConfig.titleArtistFormat
+private fun loadConfig() {
+    try {
+        if (::configHelper.isInitialized) {
+            // 使用 ConfigManager 加载配置 - 直接获取正确类型的值
+            appConfig.windowX = configHelper.get("windowX", appConfig.windowX)
+            appConfig.windowY = configHelper.get("windowY", appConfig.windowY)
+            appConfig.windowWidth = configHelper.get("windowWidth", appConfig.windowWidth)
+            appConfig.windowHeight = configHelper.get("windowHeight", appConfig.windowHeight)
+            appConfig.isLocked = configHelper.get("isLocked", appConfig.isLocked)
+            appConfig.titleArtistFormat = configHelper.get("titleArtistFormat", appConfig.titleArtistFormat)
             // 字体设置
-            chineseFont = Font(appConfig.chineseFontName, appConfig.fontStyle, appConfig.fontSize)
-            japaneseFont = Font(appConfig.japaneseFontName, appConfig.fontStyle, appConfig.fontSize)
-            englishFont = Font(appConfig.englishFontName, appConfig.fontStyle, appConfig.fontSize)
-            lyricsPanel.setFonts(chineseFont, japaneseFont, englishFont)
-            // 颜色设置
-            lyricsPanel.lyricColor = Color(appConfig.lyricColor)
-            lyricsPanel.highlightColor = Color(appConfig.highlightColor)
-            lyricsPanel.backgroundColor = Color(appConfig.backgroundColor)
-            lyricsPanel.transparency = appConfig.transparency
-            lyricsPanel.background = Color(
-                lyricsPanel.backgroundColor.red,
-                lyricsPanel.backgroundColor.green,
-                lyricsPanel.backgroundColor.blue,
-                (255 * lyricsPanel.transparency).roundToInt()
-            )
+            appConfig.chineseFontName = configHelper.get("chineseFontName", appConfig.chineseFontName)
+            appConfig.japaneseFontName = configHelper.get("japaneseFontName", appConfig.japaneseFontName)
+            appConfig.englishFontName = configHelper.get("englishFontName", appConfig.englishFontName)
+            appConfig.fontSize = configHelper.get("fontSize", appConfig.fontSize)
+            appConfig.fontStyle = configHelper.get("fontStyle", appConfig.fontStyle)
+            // 颜色设置 - 直接获取整数值
+            appConfig.lyricColor = configHelper.get("lyricColor", appConfig.lyricColor)
+            appConfig.highlightColor = configHelper.get("highlightColor", appConfig.highlightColor)
+            appConfig.backgroundColor = configHelper.get("backgroundColor", appConfig.backgroundColor)
+            // 透明度 - 直接获取float值
+            appConfig.transparency = configHelper.get("transparency", appConfig.transparency)
             // 其他设置
-            lyricsPanel.animationSpeed = appConfig.animationSpeed
-            lyricsPanel.alignment = when (appConfig.alignment) {
-                1 -> LyricsPanel.Alignment.LEFT
-                2 -> LyricsPanel.Alignment.RIGHT
-                else -> LyricsPanel.Alignment.CENTER
-            }
-            lyricsPanel.useShadow = appConfig.useShadow
-        } catch (e: Exception) {
-            println("加载配置文件失败: ${e.message}")
+            appConfig.animationSpeed = configHelper.get("animationSpeed", appConfig.animationSpeed)
+            appConfig.alignment = configHelper.get("alignment", appConfig.alignment)
+            appConfig.useShadow = configHelper.get("useShadow", appConfig.useShadow)
+        } else if (configFile.exists()) {
+            // 回退到文件配置
+            val json = configFile.readText()
+            appConfig = gson.fromJson(json, AppConfig::class.java)
         }
-    }
-    // 保存配置文件
-    private fun saveConfig() {
-        try {
-            // 更新配置
-            appConfig.windowX = frame.location.x
-            appConfig.windowY = frame.location.y
-            appConfig.windowWidth = frame.width
-            appConfig.windowHeight = frame.height
-            appConfig.isLocked = isLocked
-            appConfig.titleArtistFormat = titleArtistFormat
-            // 字体设置
-            appConfig.chineseFontName = chineseFont.name
-            appConfig.japaneseFontName = japaneseFont.name
-            appConfig.englishFontName = englishFont.name
-            appConfig.fontSize = chineseFont.size
-            appConfig.fontStyle = chineseFont.style
-            // 颜色设置
-            appConfig.lyricColor = lyricsPanel.lyricColor.rgb
-            appConfig.highlightColor = lyricsPanel.highlightColor.rgb
-            appConfig.backgroundColor = lyricsPanel.backgroundColor.rgb
-            appConfig.transparency = lyricsPanel.transparency
-            // 其他设置
-            appConfig.animationSpeed = lyricsPanel.animationSpeed
-            appConfig.alignment = when (lyricsPanel.alignment) {
-                LyricsPanel.Alignment.LEFT -> 1
-                LyricsPanel.Alignment.RIGHT -> 2
-                else -> 0
-            }
-            appConfig.useShadow = lyricsPanel.useShadow
-            if (::configHelper.isInitialized) {
-                // 使用 ConfigManager 保存配置 - 直接保存正确类型的值
-                configHelper.set("windowX", appConfig.windowX)
-                configHelper.set("windowY", appConfig.windowY)
-                configHelper.set("windowWidth", appConfig.windowWidth)
-                configHelper.set("windowHeight", appConfig.windowHeight)
-                configHelper.set("isLocked", appConfig.isLocked)
-                configHelper.set("titleArtistFormat", appConfig.titleArtistFormat)
-                configHelper.set("chineseFontName", appConfig.chineseFontName)
-                configHelper.set("japaneseFontName", appConfig.japaneseFontName)
-                configHelper.set("englishFontName", appConfig.englishFontName)
-                configHelper.set("fontSize", appConfig.fontSize)
-                configHelper.set("fontStyle", appConfig.fontStyle)
-                configHelper.set("lyricColor", appConfig.lyricColor)
-                configHelper.set("highlightColor", appConfig.highlightColor)
-                configHelper.set("backgroundColor", appConfig.backgroundColor)
-                configHelper.set("transparency", appConfig.transparency)  // 直接保存float值
-                configHelper.set("animationSpeed", appConfig.animationSpeed)
-                configHelper.set("alignment", appConfig.alignment)
-                configHelper.set("useShadow", appConfig.useShadow)
-                configHelper.save()
-            } else {
-                // 回退到文件配置
-                if (!configDir.exists()) {
-                    configDir.mkdirs()
-                }
-                // 保存到文件
-                val json = gson.toJson(appConfig)
-                configFile.writeText(json)
-            }
-        } catch (e: Exception) {
-            println("保存配置文件失败: ${e.message}")
+        // 应用配置
+        frame.setSize(appConfig.windowWidth, appConfig.windowHeight)
+        frame.setLocation(appConfig.windowX, appConfig.windowY)
+        isLocked = appConfig.isLocked
+        titleArtistFormat = appConfig.titleArtistFormat
+        // 字体设置
+        chineseFont = Font(appConfig.chineseFontName, appConfig.fontStyle, appConfig.fontSize)
+        japaneseFont = Font(appConfig.japaneseFontName, appConfig.fontStyle, appConfig.fontSize)
+        englishFont = Font(appConfig.englishFontName, appConfig.fontStyle, appConfig.fontSize)
+        lyricsPanel.setFonts(chineseFont, japaneseFont, englishFont)
+        // 颜色设置
+        lyricsPanel.lyricColor = Color(appConfig.lyricColor)
+        lyricsPanel.highlightColor = Color(appConfig.highlightColor)
+        lyricsPanel.backgroundColor = Color(appConfig.backgroundColor)
+        lyricsPanel.transparency = appConfig.transparency
+        lyricsPanel.background = Color(
+            lyricsPanel.backgroundColor.red,
+            lyricsPanel.backgroundColor.green,
+            lyricsPanel.backgroundColor.blue,
+            (255 * lyricsPanel.transparency).roundToInt()
+        )
+        // 其他设置
+        lyricsPanel.animationSpeed = appConfig.animationSpeed
+        lyricsPanel.alignment = when (appConfig.alignment) {
+            1 -> LyricsPanel.Alignment.LEFT
+            2 -> LyricsPanel.Alignment.RIGHT
+            else -> LyricsPanel.Alignment.CENTER
         }
+        lyricsPanel.useShadow = appConfig.useShadow
+    } catch (e: Exception) {
+        println("加载配置文件失败: ${e.message}")
     }
+}
+
+// 保存配置文件
+private fun saveConfig() {
+    try {
+        // 更新配置
+        appConfig.windowX = frame.location.x
+        appConfig.windowY = frame.location.y
+        appConfig.windowWidth = frame.width
+        appConfig.windowHeight = frame.height
+        appConfig.isLocked = isLocked
+        appConfig.titleArtistFormat = titleArtistFormat
+        // 字体设置
+        appConfig.chineseFontName = chineseFont.name
+        appConfig.japaneseFontName = japaneseFont.name
+        appConfig.englishFontName = englishFont.name
+        appConfig.fontSize = chineseFont.size
+        appConfig.fontStyle = chineseFont.style
+        // 颜色设置
+        appConfig.lyricColor = lyricsPanel.lyricColor.rgb
+        appConfig.highlightColor = lyricsPanel.highlightColor.rgb
+        appConfig.backgroundColor = lyricsPanel.backgroundColor.rgb
+        appConfig.transparency = lyricsPanel.transparency
+        // 其他设置
+        appConfig.animationSpeed = lyricsPanel.animationSpeed
+        appConfig.alignment = when (lyricsPanel.alignment) {
+            LyricsPanel.Alignment.LEFT -> 1
+            LyricsPanel.Alignment.RIGHT -> 2
+            else -> 0
+        }
+        appConfig.useShadow = lyricsPanel.useShadow
+        if (::configHelper.isInitialized) {
+            // 使用 ConfigManager 保存配置 - 直接保存正确类型的值
+            configHelper.set("windowX", appConfig.windowX)
+            configHelper.set("windowY", appConfig.windowY)
+            configHelper.set("windowWidth", appConfig.windowWidth)
+            configHelper.set("windowHeight", appConfig.windowHeight)
+            configHelper.set("isLocked", appConfig.isLocked)
+            configHelper.set("titleArtistFormat", appConfig.titleArtistFormat)
+            configHelper.set("chineseFontName", appConfig.chineseFontName)
+            configHelper.set("japaneseFontName", appConfig.japaneseFontName)
+            configHelper.set("englishFontName", appConfig.englishFontName)
+            configHelper.set("fontSize", appConfig.fontSize)
+            configHelper.set("fontStyle", appConfig.fontStyle)
+            configHelper.set("lyricColor", appConfig.lyricColor)
+            configHelper.set("highlightColor", appConfig.highlightColor)
+            configHelper.set("backgroundColor", appConfig.backgroundColor)
+            configHelper.set("transparency", appConfig.transparency)  // 直接保存float值
+            configHelper.set("animationSpeed", appConfig.animationSpeed)
+            configHelper.set("alignment", appConfig.alignment)
+            configHelper.set("useShadow", appConfig.useShadow)
+            configHelper.save()
+        } else {
+            // 回退到文件配置
+            if (!configDir.exists()) {
+                configDir.mkdirs()
+            }
+            // 保存到文件
+            val json = gson.toJson(appConfig)
+            configFile.writeText(json)
+        }
+    } catch (e: Exception) {
+        println("保存配置文件失败: ${e.message}")
+    }
+}
     // 启用Windows毛玻璃效果
     private fun enableAcrylicEffect(alpha: Int) {
         try {
@@ -1043,7 +1044,7 @@ object DesktopLyrics {
     private fun exitApplication() {
         stop()
     }
-    // 将 showSettingsDialog 方法改为 public
+
     fun showSettingsDialog() {
         val dialog = JDialog(frame, "桌面歌词设置", true)
         dialog.layout = BorderLayout()
@@ -1991,3 +1992,4 @@ class LyricsPanel : JPanel() {
         }
     }
 }
+
