@@ -58,11 +58,20 @@
           "default_value": "#000000"
         },
         {
+          "key": "alignment",
+          "type": "list",
+          "title": "歌词对齐方式",
+          "summary": "选择歌词的对齐方式",
+          "entries": ["居中", "左对齐", "右对齐"],
+          "entry_values": [0, 1, 2],
+          "default_value": 0
+        },
+        {
           "type": "button",
           "title": "打开高级设置",
           "summary": "打开完整设置对话框",
           "arrow_type": "link",
-          "on_click": "com.zmxl.plugin.lyrics.DesktopLyrics.showSettingsDialog"
+          "on_click": "com.zmxl.plugin.lyrics.DesktopLyrics.INSTANCE.showSettingsDialog"
         }
       ]
     }
