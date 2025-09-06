@@ -108,14 +108,12 @@ object DesktopLyrics {
         var useShadow: Boolean = true
     )
     private var appConfig = AppConfig()
-    private val configDir = File(System.getenv("APPDATA") + File.separator + "Salt Player for Windows" + File.separator + "workshop" + File.separator + "data" + File.separator + "com.zmxl.spw-control-plugin")
-    private val configFile = File(configDir, "desktop_lyrics_config.json")
     // ConfigManager 支持
     private lateinit var configManager: ConfigManager
     private lateinit var configHelper: ConfigHelper
     // JNA接口定义
     interface User32Ex : com.sun.jna.platform.win32.User32 {
-        fun SetWindowCompositionAttribute(hWnd: WinDef.HWND, data: WindowCompositionAttributeData): Boolean
+        fun SetWindowCompositionAttribute(hWnd: WinDef.HWND,  WindowCompositionAttributeData): Boolean
         companion object {
             val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java) as User32Ex
         }
@@ -271,10 +269,15 @@ object DesktopLyrics {
                 appConfig.animationSpeed = configHelper.get("animationSpeed", appConfig.animationSpeed)
                 appConfig.alignment = configHelper.get("alignment", appConfig.alignment)
                 appConfig.useShadow = configHelper.get("useShadow", appConfig.useShadow)
-            } else if (configFile.exists()) {
-                // 回退到文件配置
-                val json = configFile.readText()
-                appConfig = gson.fromJson(json, AppConfig::class.java)
+            } else {
+                // 没有ConfigManager时，尝试从旧路径加载
+                val oldConfigDir = File(System.getenv("APPDATA") + File.separator + "workshop" + File.separator + "data" + File.separator + "com.zmxl.spw-control-plugin")
+                val oldConfigFile = File(oldConfigDir, "desktop_lyrics_config.json")
+                
+                if (oldConfigFile.exists()) {
+                    val json = oldConfigFile.readText()
+                    appConfig = gson.fromJson(json, AppConfig::class.java)
+                }
             }
             // 应用配置
             frame.setSize(appConfig.windowWidth, appConfig.windowHeight)
@@ -361,13 +364,13 @@ object DesktopLyrics {
                 configHelper.set("useShadow", appConfig.useShadow)
                 configHelper.save()
             } else {
-                // 回退到文件配置
-                if (!configDir.exists()) {
-                    configDir.mkdirs()
+                // 没有ConfigManager时，保存到旧路径
+                val oldConfigDir = File(System.getenv("APPDATA") + File.separator + "workshop" + File.separator + "data" + File.separator + "com.zmxl.spw-control-plugin")
+                if (!oldConfigDir.exists()) {
+                    oldConfigDir.mkdirs()
                 }
-                // 保存到文件
                 val json = gson.toJson(appConfig)
-                configFile.writeText(json)
+                File(oldConfigDir, "desktop_lyrics_config.json").writeText(json)
             }
         } catch (e: Exception) {
             println("保存配置文件失败: ${e.message}")
