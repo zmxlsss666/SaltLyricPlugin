@@ -35,6 +35,10 @@ import javax.swing.border.EmptyBorder
 import kotlin.math.roundToInt
 import javax.swing.event.PopupMenuListener
 import javax.swing.event.PopupMenuEvent
+import java.nio.file.*
+import java.nio.file.StandardWatchEventKinds.*
+import java.nio.file.WatchEvent.Kind
+
 object DesktopLyrics {
     private var isManuallyHidden = false
     private val frame = JFrame()
@@ -45,7 +49,6 @@ object DesktopLyrics {
     private var isResizing = false
     private val resizeBorder = 8
     private val timer = Timer(10) { updateLyrics() }
-    private val configMonitorTimer = Timer(100) { checkConfigChanges() } // 配置监控定时器
     private val gson = Gson()
     private var currentSongId = ""
     private var lastLyricUrl = ""
@@ -109,9 +112,13 @@ object DesktopLyrics {
         var useShadow: Boolean = true
     )
     private var appConfig = AppConfig()
+    private var configFilePath: Path? = null
+    private var watchService: WatchService? = null
+    private var watchThread: Thread? = null
     // ConfigManager 支持
     private lateinit var configManager: ConfigManager
     private lateinit var configHelper: ConfigHelper
+    
 // JNA接口定义
     interface User32Ex : com.sun.jna.platform.win32.User32 {
     fun SetWindowCompositionAttribute(hWnd: WinDef.HWND, data: WindowCompositionAttributeData): Boolean  // 添加参数名称 "data"
@@ -141,92 +148,63 @@ object DesktopLyrics {
         configManager = manager
         configHelper = manager.getConfig("desktop_lyrics_config.json")
         
-        // 检查并迁移旧配置
-        migrateOldConfig()
+        // 获取配置文件路径并设置监听
+        setupConfigFileWatch()
     }
     
-    private fun migrateOldConfig() {
+    // 新增：设置配置文件监听
+    private fun setupConfigFileWatch() {
         try {
-            // 旧配置路径 (旧版Salt Player)
-            val oldConfigPath1 = File(
-                System.getenv("APPDATA") + File.separator + "workshop" + 
-                File.separator + "data" + File.separator + "com.zmxl.spw-control-plugin" + 
-                File.separator + "desktop_lyrics_config.json"
-            )
+            configFilePath = configHelper.getConfigPath()
+            val configDir = configFilePath?.parent
             
-            // 旧配置路径 (新版Salt Player但旧插件ID)
-            val oldConfigPath2 = File(
-                System.getenv("APPDATA") + File.separator + "Salt Player for Windows" + 
-                File.separator + "workshop" + File.separator + "data" + 
-                File.separator + "com.zmxl.spw-control-plugin" + File.separator + "desktop_lyrics_config.json"
-            )
-            
-            // 旧配置路径 (使用SaltLyricPlugin作为插件ID)
-            val oldConfigPath3 = File(
-                System.getenv("APPDATA") + File.separator + "Salt Player for Windows" + 
-                File.separator + "workshop" + File.separator + "data" + 
-                File.separator + "SaltLyricPlugin" + File.separator + "desktop_lyrics_config.json"
-            )
-            
-            // 检查配置是否已经迁移
-            if (!configHelper.getConfigPath().toFile().exists()) {
-                // 尝试从第一个旧位置迁移
-                if (oldConfigPath1.exists()) {
-                    migrateFromPath(oldConfigPath1)
-                    return
+            if (configDir != null) {
+                watchService = FileSystems.getDefault().newWatchService()
+                configDir.register(watchService, ENTRY_MODIFY)
+                
+                // 启动监听线程
+                watchThread = Thread {
+                    try {
+                        while (!Thread.currentThread().isInterrupted) {
+                            val key = watchService?.take() ?: break
+                            
+                            for (event in key.pollEvents()) {
+                                val fileName = (event.context() as? Path)?.fileName?.toString()
+                                if (fileName == "desktop_lyrics_config.json") {
+                                    // 配置文件被修改，重新加载配置
+                                    println("检测到配置文件修改，重新加载配置...")
+                                    loadConfig()
+                                }
+                            }
+                            
+                            if (!key.reset()) {
+                                break
+                            }
+                        }
+                    } catch (e: InterruptedException) {
+                        // 线程被中断，正常退出
+                    } catch (e: Exception) {
+                        println("配置文件监听出错: ${e.message}")
+                    }
+                }.apply {
+                    isDaemon = true
+                    name = "ConfigFileWatcher"
+                    start()
                 }
                 
-                // 尝试从第二个旧位置迁移
-                if (oldConfigPath2.exists()) {
-                    migrateFromPath(oldConfigPath2)
-                    return
-                }
-                
-                // 尝试从第三个旧位置迁移
-                if (oldConfigPath3.exists()) {
-                    migrateFromPath(oldConfigPath3)
-                    return
-                }
+                println("已设置配置文件监听: $configFilePath")
             }
         } catch (e: Exception) {
-            println("配置迁移失败: ${e.message}")
+            println("设置配置文件监听失败: ${e.message}")
         }
     }
     
-    private fun migrateFromPath(oldConfigPath: File) {
-        try {
-            println("检测到旧版配置文件，正在迁移...")
-            
-            // 读取旧配置
-            val oldConfigJson = oldConfigPath.readText()
-            val oldConfig = gson.fromJson(oldConfigJson, AppConfig::class.java)
-            
-            // 迁移到新配置
-            configHelper.set("windowX", oldConfig.windowX)
-            configHelper.set("windowY", oldConfig.windowY)
-            configHelper.set("windowWidth", oldConfig.windowWidth)
-            configHelper.set("windowHeight", oldConfig.windowHeight)
-            configHelper.set("isLocked", oldConfig.isLocked)
-            configHelper.set("titleArtistFormat", oldConfig.titleArtistFormat)
-            configHelper.set("chineseFontName", oldConfig.chineseFontName)
-            configHelper.set("japaneseFontName", oldConfig.japaneseFontName)
-            configHelper.set("englishFontName", oldConfig.englishFontName)
-            configHelper.set("fontSize", oldConfig.fontSize)
-            configHelper.set("fontStyle", oldConfig.fontStyle)
-            configHelper.set("lyricColor", oldConfig.lyricColor)
-            configHelper.set("highlightColor", oldConfig.highlightColor)
-            configHelper.set("backgroundColor", oldConfig.backgroundColor)
-            // 修复：直接保存float值，而不是转换为字符串
-            configHelper.set("transparency", oldConfig.transparency)
-            configHelper.set("animationSpeed", oldConfig.animationSpeed)
-            configHelper.set("alignment", oldConfig.alignment)
-            configHelper.set("useShadow", oldConfig.useShadow)
-            configHelper.save()
-            
-            println("配置文件已成功迁移到新位置")
-        } catch (e: Exception) {
-            println("配置迁移失败: ${e.message}")
-        }
+    // 新增：清理配置文件监听
+    private fun cleanupConfigFileWatch() {
+        watchThread?.interrupt()
+        watchService?.close()
+        watchService = null
+        watchThread = null
     }
     
     fun start() {
@@ -234,69 +212,27 @@ object DesktopLyrics {
         setupUI()
         timer.start()
         backgroundTimer.start()
-        configMonitorTimer.start() // 启动配置监控定时器
     }
     fun stop() {
-        saveConfig()
+        // 先停止所有定时器和监听
         timer.stop()
         backgroundTimer.stop()
-        configMonitorTimer.stop() // 停止配置监控定时器
+        cleanupConfigFileWatch()
+        
+        // 保存配置
+        saveConfig()
+        
+        // 停止其他组件
         scrollTimer?.stop()
         disableAcrylicEffect()
         frame.dispose()
-    }
-    
-    // 新增：检查配置是否变化
-    private fun checkConfigChanges() {
-        try {
-            if (::configHelper.isInitialized) {
-                // 检查关键配置项是否变化
-                val newIsLocked = configHelper.get("isLocked", appConfig.isLocked)
-                val newTitleArtistFormat = configHelper.get("titleArtistFormat", appConfig.titleArtistFormat)
-                val newChineseFontName = configHelper.get("chineseFontName", appConfig.chineseFontName)
-                val newJapaneseFontName = configHelper.get("japaneseFontName", appConfig.japaneseFontName)
-                val newEnglishFontName = configHelper.get("englishFontName", appConfig.englishFontName)
-                val newFontSize = configHelper.get("fontSize", appConfig.fontSize)
-                val newFontStyle = configHelper.get("fontStyle", appConfig.fontStyle)
-                val newLyricColor = configHelper.get("lyricColor", appConfig.lyricColor)
-                val newHighlightColor = configHelper.get("highlightColor", appConfig.highlightColor)
-                val newBackgroundColor = configHelper.get("backgroundColor", appConfig.backgroundColor)
-                val newTransparency = configHelper.get("transparency", appConfig.transparency)
-                val newAnimationSpeed = configHelper.get("animationSpeed", appConfig.animationSpeed)
-                val newAlignment = configHelper.get("alignment", appConfig.alignment)
-                val newUseShadow = configHelper.get("useShadow", appConfig.useShadow)
-                
-                // 检查是否有配置变化
-                if (newIsLocked != appConfig.isLocked ||
-                    newTitleArtistFormat != appConfig.titleArtistFormat ||
-                    newChineseFontName != appConfig.chineseFontName ||
-                    newJapaneseFontName != appConfig.japaneseFontName ||
-                    newEnglishFontName != appConfig.englishFontName ||
-                    newFontSize != appConfig.fontSize ||
-                    newFontStyle != appConfig.fontStyle ||
-                    newLyricColor != appConfig.lyricColor ||
-                    newHighlightColor != appConfig.highlightColor ||
-                    newBackgroundColor != appConfig.backgroundColor ||
-                    Math.abs(newTransparency - appConfig.transparency) > 0.01f ||
-                    newAnimationSpeed != appConfig.animationSpeed ||
-                    newAlignment != appConfig.alignment ||
-                    newUseShadow != appConfig.useShadow) {
-                    
-                    println("检测到配置变化，重新加载配置...")
-                    // 重新加载配置
-                    loadConfig()
-                }
-            }
-        } catch (e: Exception) {
-            println("检查配置变化时出错: ${e.message}")
-        }
     }
     
     // 加载配置文件
     private fun loadConfig() {
         try {
             if (::configHelper.isInitialized) {
-                // 使用 ConfigManager 加载配置 - 直接获取正确类型的值
+                // 使用 ConfigManager 加载配置
                 appConfig.windowX = configHelper.get("windowX", appConfig.windowX)
                 appConfig.windowY = configHelper.get("windowY", appConfig.windowY)
                 appConfig.windowWidth = configHelper.get("windowWidth", appConfig.windowWidth)
@@ -319,15 +255,6 @@ object DesktopLyrics {
                 appConfig.animationSpeed = configHelper.get("animationSpeed", appConfig.animationSpeed)
                 appConfig.alignment = configHelper.get("alignment", appConfig.alignment)
                 appConfig.useShadow = configHelper.get("useShadow", appConfig.useShadow)
-            } else {
-                // 没有ConfigManager时，尝试从旧路径加载
-                val oldConfigDir = File(System.getenv("APPDATA") + File.separator + "workshop" + File.separator + "data" + File.separator + "com.zmxl.spw-control-plugin")
-                val oldConfigFile = File(oldConfigDir, "desktop_lyrics_config.json")
-                
-                if (oldConfigFile.exists()) {
-                    val json = oldConfigFile.readText()
-                    appConfig = gson.fromJson(json, AppConfig::class.java)
-                }
             }
             // 应用配置
             frame.setSize(appConfig.windowWidth, appConfig.windowHeight)
@@ -441,20 +368,11 @@ object DesktopLyrics {
                 configHelper.set("lyricColor", appConfig.lyricColor)
                 configHelper.set("highlightColor", appConfig.highlightColor)
                 configHelper.set("backgroundColor", appConfig.backgroundColor)
-                // 修复：直接保存float值，而不是转换为字符串
                 configHelper.set("transparency", appConfig.transparency)
                 configHelper.set("animationSpeed", appConfig.animationSpeed)
                 configHelper.set("alignment", appConfig.alignment)
                 configHelper.set("useShadow", appConfig.useShadow)
                 configHelper.save()
-            } else {
-                // 没有ConfigManager时，保存到旧路径
-                val oldConfigDir = File(System.getenv("APPDATA") + File.separator + "workshop" + File.separator + "data" + File.separator + "com.zmxl.spw-control-plugin")
-                if (!oldConfigDir.exists()) {
-                    oldConfigDir.mkdirs()
-                }
-                val json = gson.toJson(appConfig)
-                File(oldConfigDir, "desktop_lyrics_config.json").writeText(json)
             }
         } catch (e: Exception) {
             println("保存配置文件失败: ${e.message}")
@@ -767,7 +685,7 @@ object DesktopLyrics {
                 lockButton = createControlButton("🔒").apply {
                     addActionListener { toggleLock() }
                 }
-                // 设置按钮 - 保持可见性
+                // 设置按钮
                 settingsButton = createControlButton("⚙").apply {
                     addActionListener { showSettingsDialog() }
                 }
@@ -2203,4 +2121,3 @@ class LyricsPanel : JPanel() {
         }
     }
 }
-
