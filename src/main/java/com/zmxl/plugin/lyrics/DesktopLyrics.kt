@@ -112,13 +112,13 @@ object DesktopLyrics {
     // ConfigManager 支持
     private lateinit var configManager: ConfigManager
     private lateinit var configHelper: ConfigHelper
-    // JNA接口定义
+// JNA接口定义
     interface User32Ex : com.sun.jna.platform.win32.User32 {
-        fun SetWindowCompositionAttribute(hWnd: WinDef.HWND,  WindowCompositionAttributeData): Boolean
-        companion object {
-            val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java) as User32Ex
-        }
+    fun SetWindowCompositionAttribute(hWnd: WinDef.HWND, data: WindowCompositionAttributeData): Boolean  // 添加参数名称 "data"
+    companion object {
+        val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java) as User32Ex
     }
+}
     // Windows API常量
     private val ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
     private val WCA_ACCENT_POLICY = 19
@@ -2203,3 +2203,4 @@ class LyricsPanel : JPanel() {
         }
     }
 }
+
