@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@file:OptIn(UnstableSpwWorkshopApi::class)
 package com.zmxl.plugin.lyrics
 
 import com.google.gson.Gson
@@ -21,6 +22,7 @@ import com.sun.jna.Structure
 import com.sun.jna.platform.win32.WinDef
 import com.xuncorp.spw.workshop.api.config.ConfigHelper
 import com.xuncorp.spw.workshop.api.config.ConfigManager
+import com.xuncorp.spw.workshop.api.UnstableSpwWorkshopApi
 import java.awt.*
 import java.awt.event.*
 import java.awt.image.BufferedImage
@@ -2363,3 +2365,4 @@ class LyricsPanel : JPanel() {
         }
     }
 }
+
