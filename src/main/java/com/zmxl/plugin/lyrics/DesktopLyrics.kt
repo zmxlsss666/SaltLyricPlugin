@@ -161,12 +161,11 @@ object DesktopLyrics {
         @JvmField var Data: com.sun.jna.Pointer? = null
         @JvmField var SizeOfData: Int = 0
     }
-        @JvmStatic
-        fun openSettingsDialog() {
+    @JvmStatic
+    fun openSettingsDialog() {
             // 直接调用单例的方法
             DesktopLyrics.showSettingsDialog()
         }
-    }
     
     fun setConfigManager(manager: ConfigManager) {
         configManager = manager
@@ -2358,3 +2357,4 @@ class LyricsPanel : JPanel() {
             g2d.drawString(message, messageX, centerY)
         }
     }
+}
