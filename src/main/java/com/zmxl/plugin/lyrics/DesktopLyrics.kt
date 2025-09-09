@@ -143,7 +143,12 @@ object DesktopLyrics {
         @JvmField var Data: com.sun.jna.Pointer? = null
         @JvmField var SizeOfData: Int = 0
     }
-    
+        companion object {
+        @JvmStatic
+        fun openSettingsDialog() {
+            DesktopLyrics.showSettingsDialog()
+        }
+    }
     fun setConfigManager(manager: ConfigManager) {
         configManager = manager
         configHelper = manager.getConfig("desktop_lyrics_config.json")
@@ -1138,47 +1143,64 @@ object DesktopLyrics {
     private fun exitApplication() {
         stop()
     }
-    // 将 showSettingsDialog 方法改为 public
     fun showSettingsDialog() {
-        val dialog = JDialog(frame, "桌面歌词设置", true)
-        dialog.layout = BorderLayout()
-        dialog.setSize(500, 500)
-        dialog.setLocationRelativeTo(frame)
+        if (!isInitialized) {
+            println("桌面歌词未初始化，无法打开设置")
+            return
+        }
+        
+        // 如果对话框已经存在，先关闭它
+        settingsDialog?.dispose()
+        
+        settingsDialog = JDialog(frame, "桌面歌词设置", true)
+        settingsDialog!!.layout = BorderLayout()
+        settingsDialog!!.setSize(500, 500)
+        settingsDialog!!.setLocationRelativeTo(frame)
+        
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        
         val tabbedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
             border = EmptyBorder(10, 10, 10, 10)
             background = Color(240, 240, 240)
             font = Font("微软雅黑", Font.PLAIN, 12)
         }
+        
         // 字体设置面板
-        val fontPanel = createFontPanel(dialog)
+        val fontPanel = createFontPanel(settingsDialog!!)
+        
         // 颜色设置面板
-        val colorPanel = createColorPanel(dialog)
+        val colorPanel = createColorPanel(settingsDialog!!)
+        
         // 其他设置面板
-        val otherPanel = createOtherPanel(dialog)
+        val otherPanel = createOtherPanel(settingsDialog!!)
+        
         tabbedPane.addTab("字体", fontPanel)
         tabbedPane.addTab("颜色", colorPanel)
         tabbedPane.addTab("其他", otherPanel)
-        dialog.add(tabbedPane, BorderLayout.CENTER)
+        
+        settingsDialog!!.add(tabbedPane, BorderLayout.CENTER)
+        
         // 添加关闭按钮
         val closeButton = JButton("关闭").apply {
             font = Font("微软雅黑", Font.BOLD, 12)
             background = Color(192, 57, 43)
             foreground = Color.WHITE
             border = EmptyBorder(8, 20, 8, 20)
-            addActionListener { dialog.dispose() }
+            addActionListener { settingsDialog!!.dispose() }
         }
+        
         val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
             background = Color(240, 240, 240)
             border = EmptyBorder(10, 10, 10, 10)
             add(closeButton)
         }
-        dialog.add(buttonPanel, BorderLayout.SOUTH)
-        dialog.isVisible = true
+        
+        settingsDialog!!.add(buttonPanel, BorderLayout.SOUTH)
+        settingsDialog!!.isVisible = true
     }
     private fun createFontPanel(dialog: JDialog): JPanel {
         return JPanel(GridBagLayout()).apply {
@@ -2121,3 +2143,4 @@ class LyricsPanel : JPanel() {
         }
     }
 }
+
