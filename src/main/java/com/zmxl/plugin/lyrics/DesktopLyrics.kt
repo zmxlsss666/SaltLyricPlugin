@@ -1814,7 +1814,6 @@ object DesktopLyrics {
         val lyric: String?
     )
 }
-}
 
 class LyricsPanel : JPanel() {
     private var title = ""
@@ -2359,8 +2358,3 @@ class LyricsPanel : JPanel() {
             g2d.drawString(message, messageX, centerY)
         }
     }
-}
-
-
-
-
