@@ -71,7 +71,7 @@
           "title": "打开高级设置",
           "summary": "打开完整设置对话框",
           "arrow_type": "link",
-          "on_click": "com.zmxl.plugin.lyrics.DesktopLyrics.INSTANCE.showSettingsDialog"
+          "on_click": "com.zmxl.plugin.lyrics.DesktopLyrics.openSettingsDialog"
         }
       ]
     }
