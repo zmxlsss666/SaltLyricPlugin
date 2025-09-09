@@ -161,12 +161,6 @@ object DesktopLyrics {
         @JvmField var Data: com.sun.jna.Pointer? = null
         @JvmField var SizeOfData: Int = 0
     }
-    
-    companion object {
-        /**
-         * 静态方法 - 用于SPW配置按钮调用
-         * 这个方法必须是无参数的，且是静态的
-         */
         @JvmStatic
         fun openSettingsDialog() {
             // 直接调用单例的方法
@@ -2365,4 +2359,5 @@ class LyricsPanel : JPanel() {
         }
     }
 }
+
 
