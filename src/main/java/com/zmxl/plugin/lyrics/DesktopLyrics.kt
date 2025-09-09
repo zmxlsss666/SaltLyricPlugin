@@ -1813,7 +1813,7 @@ object DesktopLyrics {
         val status: String,
         val lyric: String?
     )
-}
+
 
 class LyricsPanel : JPanel() {
     private var title = ""
@@ -2359,5 +2359,6 @@ class LyricsPanel : JPanel() {
         }
     }
 }
+
 
 
