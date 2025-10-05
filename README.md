@@ -6,9 +6,8 @@
 *   在线歌词获取：对于未内嵌歌词的歌曲，通过网易云、QQ、酷狗等在线音乐平台获取歌词
 *   HTTP API 接口：提供音乐控制及歌词获取接口，方便第三方集成[PS:真的会有人集成吗……]
 ## 安装方法
-1.  下载插件压缩包
-2.  解压放入%appdata%\Salt Player for Windows\workshop\plugins
-3.  进入SPW→设置→创意工坊→模组管理→SaltLyricPlugin→启用，[初次使用必须启用后重启，否则会导致功能异常]
+1.  下载插件
+2.  进入SPW→设置→创意工坊→模组管理→导入→SaltLyricPlugin→启用，[初次使用必须启用后重启，否则会导致功能异常]
 ## 编译
 ```
 gradlew plugin
