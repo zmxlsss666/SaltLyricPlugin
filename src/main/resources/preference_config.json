@@ -5,71 +5,9 @@
       "config": "desktop_lyrics_config.json",
       "preferences": [
         {
-          "key": "isLocked",
-          "type": "switch",
-          "title": "锁定位置",
-          "summary": "锁定歌词窗口位置防止误操作",
-          "default_value": false
-        },
-        {
-          "key": "titleArtistFormat",
-          "type": "list",
-          "title": "标题-艺术家格式",
-          "summary": "选择标题和艺术家的显示格式",
-          "entries": ["歌名 - 歌手", "歌手 - 歌名"],
-          "entry_values": [0, 1],
-          "default_value": 0
-        },
-        {
-          "key": "fontSize",
-          "type": "seekbar",
-          "title": "字体大小",
-          "default_value": 24,
-          "min": 12,
-          "max": 36
-        },
-        {
-          "key": "transparency",
-          "type": "seekbar",
-          "title": "窗口透明度",
-          "default_value": 0.8,
-          "min": 0.1,
-          "max": 1.0
-        },
-        {
-          "key": "lyricColor",
-          "type": "edittext",
-          "title": "歌词颜色",
-          "summary": "设置歌词颜色（RGB值）",
-          "default_value": "#FFFFFF"
-        },
-        {
-          "key": "highlightColor",
-          "type": "edittext",
-          "title": "高亮颜色",
-          "summary": "设置高亮歌词颜色（RGB值）",
-          "default_value": "#FFD700"
-        },
-        {
-          "key": "backgroundColor",
-          "type": "edittext",
-          "title": "背景颜色",
-          "summary": "设置背景颜色（RGB值）",
-          "default_value": "#000000"
-        },
-        {
-          "key": "alignment",
-          "type": "list",
-          "title": "歌词对齐方式",
-          "summary": "选择歌词的对齐方式",
-          "entries": ["居中", "左对齐", "右对齐"],
-          "entry_values": [0, 1, 2],
-          "default_value": 0
-        },
-        {
           "type": "button",
-          "title": "打开高级设置",
-          "summary": "打开完整设置对话框",
+          "title": "打开完整设置",
+          "summary": "打开完整设置",
           "arrow_type": "link",
           "on_click": "com.zmxl.plugin.lyrics.DesktopLyrics.openSettingsDialog"
         }
