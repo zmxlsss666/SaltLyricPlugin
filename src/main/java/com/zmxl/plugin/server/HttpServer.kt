@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 package com.zmxl.plugin.server
-
 import com.google.gson.Gson
 import com.sun.jna.Native
 import com.sun.jna.platform.win32.User32
@@ -36,31 +35,23 @@ import java.util.Base64
 import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
-// Remove Tika imports
-// Add JAudioTagger imports
 import org.jaudiotagger.audio.AudioFile
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.Tag
 import java.io.File
-
+import java.nio.charset.Charset
 class HttpServer(private val port: Int) {
     private lateinit var server: Server
-
     init {
         SmtcController.init()
     }
-
     fun start() {
         server = Server(port)
         val context = ServletContextHandler(ServletContextHandler.SESSIONS)
         context.contextPath = "/"
         server.handler = context
-
-        // 将HttpServer实例存入ServletContext，以便在Servlet中访问
         context.setAttribute("httpServer", this)
-
-        // 创建ServletHolder并注册API端点
         context.addServlet(ServletHolder(NowPlayingServlet()), "/api/now-playing")
         context.addServlet(ServletHolder(PlayPauseServlet()), "/api/play-pause")
         context.addServlet(ServletHolder(NextTrackServlet()), "/api/next-track")
@@ -68,21 +59,16 @@ class HttpServer(private val port: Int) {
         context.addServlet(ServletHolder(VolumeUpServlet()), "/api/volume/up")
         context.addServlet(ServletHolder(VolumeDownServlet()), "/api/volume/down")
         context.addServlet(ServletHolder(MuteServlet()), "/api/mute")
-
-        // 注册歌词API
-        context.addServlet(ServletHolder(Lyric163Servlet()), "/api/lyric163") // 网易云歌词API
-        context.addServlet(ServletHolder(LyricQQServlet()), "/api/lyricqq")   // QQ音乐歌词API
-        context.addServlet(ServletHolder(LyricKugouServlet()), "/api/lyrickugou") // 酷狗音乐歌词API
+        context.addServlet(ServletHolder(Lyric163Servlet()), "/api/lyric163")
+        context.addServlet(ServletHolder(LyricQQServlet()), "/api/lyricqq")
+        context.addServlet(ServletHolder(LyricKugouServlet()), "/api/lyrickugou")
         context.addServlet(ServletHolder(LyricFileServlet()), "/api/lyric")
-
+		context.addServlet(ServletHolder(LyricFileLrcServlet()), "/api/lyricfile")
         context.addServlet(ServletHolder(PicServlet()), "/api/pic")
         context.addServlet(ServletHolder(CurrentPositionServlet()), "/api/current-position")
-
-        // 处理所有其他请求，返回控制界面
         context.addServlet(ServletHolder(object : HttpServlet() {
             @Throws(IOException::class)
             override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-                // 从资源文件加载HTML内容
                 val htmlStream: InputStream? = javaClass.getResourceAsStream("/web/index.html")
                 if (htmlStream != null) {
                     resp.contentType = "text/html;charset=UTF-8"
@@ -94,7 +80,6 @@ class HttpServer(private val port: Int) {
                 }
             }
         }), "/*")
-
         try {
             server.start()
             println("HTTP服务器已启动，端口: $port")
@@ -103,7 +88,6 @@ class HttpServer(private val port: Int) {
             e.printStackTrace()
         }
     }
-
     fun stop() {
         try {
             server.stop()
@@ -114,7 +98,6 @@ class HttpServer(private val port: Int) {
             e.printStackTrace()
         }
     }
-
     /**
      * 获取当前播放信息API
      */
@@ -122,7 +105,6 @@ class HttpServer(private val port: Int) {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             val responseData = mapOf(
                 "status" to "success",
                 "title" to PlaybackStateHolder.currentMedia?.title,
@@ -130,16 +112,14 @@ class HttpServer(private val port: Int) {
                 "album" to PlaybackStateHolder.currentMedia?.album,
                 "isPlaying" to PlaybackStateHolder.isPlaying,
                 "position" to PlaybackStateHolder.currentPosition,
-                "volume" to PlaybackStateHolder.volume, // 返回0-100整数音量
+                "volume" to PlaybackStateHolder.volume,
                 "timestamp" to System.currentTimeMillis()
             )
-
             PrintWriter(resp.writer).use { out ->
                 out.print(Gson().toJson(responseData))
             }
         }
     }
-
     /**
      * 播放/暂停切换API
      */
@@ -147,14 +127,10 @@ class HttpServer(private val port: Int) {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             try {
-                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xB3)
-
                 Thread.sleep(100)
-
                 val response = mapOf(
                     "status" to "success",
                     "action" to "play_pause_toggled",
@@ -171,7 +147,6 @@ class HttpServer(private val port: Int) {
             }
         }
     }
-
     /**
      * 下一曲API
      */
@@ -179,16 +154,11 @@ class HttpServer(private val port: Int) {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             try {
                 SmtcController.handleNextTrack()
-
-                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xB0)
-
                 Thread.sleep(100)
-
                 val newMedia = PlaybackStateHolder.currentMedia
                 val response = mapOf(
                     "status" to "success",
@@ -206,7 +176,6 @@ class HttpServer(private val port: Int) {
             }
         }
     }
-
     /**
      * 上一曲API
      */
@@ -214,16 +183,11 @@ class HttpServer(private val port: Int) {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             try {
                 SmtcController.handlePreviousTrack()
-
-                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xB1)
-
                 Thread.sleep(100)
-
                 val newMedia = PlaybackStateHolder.currentMedia
                 val response = mapOf(
                     "status" to "success",
@@ -241,7 +205,6 @@ class HttpServer(private val port: Int) {
             }
         }
     }
-
     /**
      * 音量增加API
      */
@@ -249,16 +212,11 @@ class HttpServer(private val port: Int) {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             try {
                 SmtcController.handleVolumeUp()
-
-                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xAF)
-
                 Thread.sleep(50)
-
                 val response = mapOf(
                     "status" to "success",
                     "action" to "volume_up",
@@ -275,7 +233,6 @@ class HttpServer(private val port: Int) {
             }
         }
     }
-
     /**
      * 音量减少API
      */
@@ -283,16 +240,11 @@ class HttpServer(private val port: Int) {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             try {
                 SmtcController.handleVolumeDown()
-
-                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xAE)
-
                 Thread.sleep(50)
-
                 val response = mapOf(
                     "status" to "success",
                     "action" to "volume_down",
@@ -309,7 +261,6 @@ class HttpServer(private val port: Int) {
             }
         }
     }
-
     /**
      * 静音切换API
      */
@@ -317,16 +268,11 @@ class HttpServer(private val port: Int) {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             try {
                 SmtcController.handleMute()
-
-                // 从ServletContext获取HttpServer实例
                 val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
                 httpServer.sendMediaKeyEvent(0xAD)
-
                 Thread.sleep(50)
-
                 val isMuted = PlaybackStateHolder.volume == 0
                 val response = mapOf(
                     "status" to "success",
@@ -344,17 +290,14 @@ class HttpServer(private val port: Int) {
             }
         }
     }
-
 /**
  * 歌词API - JAudioTagger (专门优化USLT帧提取)
  */
 class LyricFileServlet : HttpServlet() {
     private val gson = Gson()
-
     @Throws(IOException::class)
     override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
         resp.contentType = "application/json;charset=UTF-8"
-
         val currentMedia = PlaybackStateHolder.currentMedia
         if (currentMedia == null || currentMedia.path.isNullOrBlank()) {
             resp.status = HttpServletResponse.SC_BAD_REQUEST
@@ -364,10 +307,8 @@ class LyricFileServlet : HttpServlet() {
             )))
             return
         }
-
         val filePath = currentMedia.path
         println("使用当前播放媒体路径: $filePath")
-
         try {
             val file = File(filePath)
             if (!file.exists() || !file.isFile) {
@@ -378,8 +319,6 @@ class LyricFileServlet : HttpServlet() {
                 )))
                 return
             }
-
-            // 检查文件扩展名
             val extension = file.extension.lowercase()
             val supportedFormats = listOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "opus")
             if (!supportedFormats.contains(extension)) {
@@ -390,10 +329,7 @@ class LyricFileServlet : HttpServlet() {
                 )))
                 return
             }
-
-            // 使用JAudioTagger提取歌词
             val lyrics = extractLyricsFromFile(file)
-
             if (lyrics.isNotBlank()) {
                 val response = mapOf(
                     "status" to "success",
@@ -421,7 +357,6 @@ class LyricFileServlet : HttpServlet() {
             e.printStackTrace()
         }
     }
-
     /**
      * 使用JAudioTagger从音频文件中提取歌词
      */
@@ -429,90 +364,66 @@ class LyricFileServlet : HttpServlet() {
         try {
             val audioFile = AudioFileIO.read(file)
             val tag = audioFile.tag
-
             if (tag == null) {
                 println("文件没有标签信息: ${file.name}")
                 return ""
             }
-
-            // 首先专门尝试提取USLT帧
             val usltLyrics = extractUSLTFrameDirectly(tag)
             if (usltLyrics.isNotBlank()) {
                 println("成功从USLT帧提取歌词")
                 return usltLyrics
             }
-
-            // 如果USLT没有找到，尝试其他常规字段
             return findLyricsInStandardFields(tag, file.extension)
         } catch (e: Exception) {
             println("使用JAudioTagger读取文件失败: ${e.message}")
             return ""
         }
     }
-
     /**
      * 直接提取USLT帧内容
      */
     private fun extractUSLTFrameDirectly(tag: Tag): String {
         try {
-            // 方法1: 使用JAudioTagger的ID3v2特定方法
             if (tag.toString().contains("ID3v2")) {
                 return extractFromID3v2Tag(tag)
             }
-
-            // 方法2: 通过字段迭代查找
             return extractUSLTByFieldIteration(tag)
         } catch (e: Exception) {
             println("直接提取USLT帧失败: ${e.message}")
             return ""
         }
     }
-
     /**
      * 从ID3v2标签提取USLT
      */
     private fun extractFromID3v2Tag(tag: Tag): String {
         try {
-            // 使用反射访问ID3v2Tag的内部方法
             val tagClass = tag.javaClass
-            
-            // 尝试获取getFirstField方法
-            val getFirstFieldMethod = tagClass.methods.find { 
-                it.name == "getFirstField" && it.parameterCount == 1 
+            val getFirstFieldMethod = tagClass.methods.find {
+                it.name == "getFirstField" && it.parameterCount == 1
             }
-            
             if (getFirstFieldMethod != null) {
-                // 尝试不同的USLT标识符
                 val usltIdentifiers = listOf("USLT", "UNSYNCED LYRICS", "UNSYNCED_LYRICS", "ULT")
-                
                 for (identifier in usltIdentifiers) {
                     try {
                         val field = getFirstFieldMethod.invoke(tag, identifier)
                         if (field != null) {
                             val fieldString = field.toString()
                             println("找到USLT字段 [$identifier]: $fieldString")
-                            
-                            // 尝试提取实际歌词内容
                             val lyricContent = extractLyricContentFromField(field)
                             if (lyricContent.isNotBlank()) {
                                 return lyricContent
                             }
-                            
-                            // 如果无法提取内容，返回整个字段字符串
                             return fieldString
                         }
                     } catch (e: Exception) {
-                        // 继续尝试下一个标识符
                         println("尝试标识符 '$identifier' 失败: ${e.message}")
                     }
                 }
             }
-            
-            // 尝试getFields方法获取所有USLT字段
-            val getFieldsMethod = tagClass.methods.find { 
-                it.name == "getFields" && it.parameterCount == 1 
+            val getFieldsMethod = tagClass.methods.find {
+                it.name == "getFields" && it.parameterCount == 1
             }
-            
             if (getFieldsMethod != null) {
                 val fields = getFieldsMethod.invoke(tag, "USLT") as? List<*>
                 if (fields != null && fields.isNotEmpty()) {
@@ -536,16 +447,13 @@ class LyricFileServlet : HttpServlet() {
         } catch (e: Exception) {
             println("从ID3v2标签提取USLT失败: ${e.message}")
         }
-        
         return ""
     }
-
     /**
      * 从字段对象中提取歌词内容
      */
     private fun extractLyricContentFromField(field: Any): String {
         try {
-            // 尝试调用getContent方法
             val getContentMethod = field.javaClass.methods.find { it.name == "getContent" }
             if (getContentMethod != null) {
                 val content = getContentMethod.invoke(field) as? String
@@ -553,8 +461,6 @@ class LyricFileServlet : HttpServlet() {
                     return content
                 }
             }
-            
-            // 尝试调用toString并清理
             val fieldString = field.toString()
             return cleanUSLTContent(fieldString)
         } catch (e: Exception) {
@@ -562,14 +468,11 @@ class LyricFileServlet : HttpServlet() {
             return ""
         }
     }
-
     /**
      * 清理USLT内容，移除框架标识符
      */
     private fun cleanUSLTContent(rawContent: String): String {
         var content = rawContent
-        
-        // 移除常见的框架标识符前缀
         val prefixes = listOf(
             "USLT:",
             "USLT=",
@@ -577,40 +480,30 @@ class LyricFileServlet : HttpServlet() {
             "Unsynchronized lyric:",
             "Unsynchronized lyric/text transcription:"
         )
-        
         prefixes.forEach { prefix ->
             if (content.startsWith(prefix, ignoreCase = true)) {
                 content = content.substring(prefix.length).trim()
             }
         }
-        
-        // 移除语言代码和描述（如果存在）
-        // USLT帧格式通常为: [语言][描述]\0[歌词]
         if (content.length >= 5 && content.substring(3, 5) == "\u0000") {
             content = content.substring(5)
         }
-        
         return content.trim()
     }
-
     /**
      * 通过字段迭代查找USLT
      */
     private fun extractUSLTByFieldIteration(tag: Tag): String {
         val lyricsBuilder = StringBuilder()
-        
         try {
-            // 获取所有字段
             val fieldsMethod = tag.javaClass.methods.find { it.name == "getFields" }
             if (fieldsMethod != null) {
                 val fields = fieldsMethod.invoke(tag) as? List<*>
                 fields?.forEach { field ->
                     if (field != null) {
                         val fieldString = field.toString()
-                        // 查找包含USLT的字段
-                        if (fieldString.contains("USLT", ignoreCase = true) || 
+                        if (fieldString.contains("USLT", ignoreCase = true) ||
                             fieldString.contains("UNSYNCED", ignoreCase = true)) {
-                            
                             println("找到可能的歌词字段: $fieldString")
                             val content = extractLyricContentFromField(field)
                             if (content.isNotBlank()) {
@@ -625,22 +518,17 @@ class LyricFileServlet : HttpServlet() {
         } catch (e: Exception) {
             println("字段迭代查找USLT失败: ${e.message}")
         }
-        
         return lyricsBuilder.toString().trim()
     }
-
     /**
      * 在标准字段中查找歌词
      */
     private fun findLyricsInStandardFields(tag: Tag, fileExtension: String): String {
-        // 尝试常见的歌词字段
         val lyricFields = listOf(
             FieldKey.LYRICS,
             FieldKey.LYRICIST,
             FieldKey.COMMENT
         )
-
-        // 尝试所有可能的歌词字段
         for (field in lyricFields) {
             try {
                 if (tag.hasField(field)) {
@@ -654,8 +542,136 @@ class LyricFileServlet : HttpServlet() {
                 println("读取字段 $field 失败: ${e.message}")
             }
         }
-
         return ""
+    }
+}
+/**
+ * 本地LRC歌词文件API
+ * 检查当前播放媒体所在目录是否存在同名的.lrc文件，并返回其内容
+ */
+class LyricFileLrcServlet : HttpServlet() {
+    private val gson = Gson()
+    @Throws(IOException::class)
+    override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+        resp.contentType = "application/json;charset=UTF-8"
+        val currentMedia = PlaybackStateHolder.currentMedia
+        if (currentMedia == null || currentMedia.path.isNullOrBlank()) {
+            resp.status = HttpServletResponse.SC_BAD_REQUEST
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "没有当前播放媒体或媒体路径为空"
+            )))
+            return
+        }
+        val mediaPath = currentMedia.path
+        println("当前播放媒体路径: $mediaPath")
+        try {
+            val lrcFile = findLrcFile(mediaPath)
+            if (lrcFile != null && lrcFile.exists() && lrcFile.isFile) {
+                println("找到LRC歌词文件: ${lrcFile.absolutePath}")
+                val lyricContent = readLrcFile(lrcFile)
+                if (lyricContent.isNotBlank()) {
+                    val response = mapOf(
+                        "status" to "success",
+                        "lyric" to lyricContent,
+                        "source" to "local_lrc_file",
+                        "file" to lrcFile.absolutePath,
+                        "fileSize" to lrcFile.length(),
+                        "message" to "成功从本地LRC文件加载歌词"
+                    )
+                    resp.writer.write(gson.toJson(response))
+                } else {
+                    resp.status = HttpServletResponse.SC_NOT_FOUND
+                    resp.writer.write(gson.toJson(mapOf(
+                        "status" to "error",
+                        "message" to "LRC文件为空或无法读取",
+                        "file" to lrcFile.absolutePath
+                    )))
+                }
+            } else {
+                val searchedPath = generateLrcFilePath(mediaPath)
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "未找到同名的LRC歌词文件",
+                    "searchedPath" to searchedPath,
+                    "suggestion" to "请确保LRC文件与音频文件在同一目录且文件名相同"
+                )))
+            }
+        } catch (e: Exception) {
+            resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "查找或读取LRC文件失败: ${e.message}"
+            )))
+            e.printStackTrace()
+        }
+    }
+    /**
+     * 根据媒体文件路径查找对应的LRC文件
+     */
+    private fun findLrcFile(mediaPath: String): File? {
+        val mediaFile = File(mediaPath)
+        if (!mediaFile.exists()) {
+            return null
+        }
+        val lrcFilePath = generateLrcFilePath(mediaPath)
+        val lrcFile = File(lrcFilePath)
+        if (lrcFile.exists() && lrcFile.isFile) {
+            return lrcFile
+        }
+        return findAlternativeLrcFiles(mediaFile)
+    }
+    /**
+     * 生成LRC文件路径（将原文件扩展名替换为.lrc）
+     */
+    private fun generateLrcFilePath(mediaPath: String): String {
+        val mediaFile = File(mediaPath)
+        val parentDir = mediaFile.parent
+        val fileNameWithoutExt = mediaFile.nameWithoutExtension
+        return "$parentDir${File.separator}$fileNameWithoutExt.lrc"
+    }
+    /**
+     * 查找其他可能的LRC文件变体
+     */
+    private fun findAlternativeLrcFiles(mediaFile: File): File? {
+        val parentDir = mediaFile.parent
+        val baseName = mediaFile.nameWithoutExtension
+        val possibleNames = listOf(
+            "$baseName.lrc",
+            "${baseName.replace(" - ", ".")}.lrc",
+            "${baseName.replace(" ", "_")}.lrc",
+            "${baseName.replace(" ", "")}.lrc",
+            "$baseName.lyric",
+            "$baseName.txt"
+        )
+        for (fileName in possibleNames) {
+            val lrcFile = File(parentDir, fileName)
+            if (lrcFile.exists() && lrcFile.isFile) {
+                println("找到备选LRC文件: ${lrcFile.absolutePath}")
+                return lrcFile
+            }
+        }
+        return null
+    }
+    /**
+     * 读取LRC文件内容
+     */
+    private fun readLrcFile(lrcFile: File): String {
+        return try {
+            lrcFile.readText(Charsets.UTF_8)
+        } catch (e: Exception) {
+            println("UTF-8读取失败，尝试其他编码: ${e.message}")
+            val encodings = listOf("GBK", "GB2312", "ISO-8859-1", "Windows-1252")
+            for (encoding in encodings) {
+                try {
+                    return lrcFile.readText(Charset.forName(encoding))
+                } catch (e: Exception) {
+                    println("编码 $encoding 读取失败: ${e.message}")
+                }
+            }
+            ""
+        }
     }
 }
     /**
@@ -663,11 +679,9 @@ class LyricFileServlet : HttpServlet() {
      */
     class Lyric163Servlet : HttpServlet() {
         private val gson = Gson()
-
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             val media = PlaybackStateHolder.currentMedia
             if (media == null) {
                 resp.status = HttpServletResponse.SC_NOT_FOUND
@@ -677,11 +691,8 @@ class LyricFileServlet : HttpServlet() {
                 )))
                 return
             }
-
             try {
-                // 尝试多种方式获取歌词
                 val lyricContent = tryGetLyricFromMultipleSources(media.title, media.artist)
-
                 if (lyricContent != null && lyricContent.isNotBlank()) {
                     val response = mapOf(
                         "status" to "success",
@@ -704,58 +715,38 @@ class LyricFileServlet : HttpServlet() {
                 )))
             }
         }
-
-        // 尝试从多个来源获取歌词
         private fun tryGetLyricFromMultipleSources(title: String?, artist: String?): String? {
             if (title.isNullOrBlank()) return null
-
             val lyric1 = getLyricFromNeteaseOfficial(title, artist)
             if (lyric1 != null) return lyric1
-
             return null
         }
-
-        // 从网易云音乐官方API获取歌词
         private fun getLyricFromNeteaseOfficial(title: String?, artist: String?): String? {
             try {
-                // 构建搜索URL
                 val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
                 val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
                 val searchUrl = "https://music.163.com/api/search/get?type=1&offset=0&limit=1&s=$encodedQuery"
-
-                // 执行搜索请求
                 val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                     "Referer" to "https://music.163.com/"
                 ))
-
                 val searchJson = JSONObject(searchResult)
-
-                // 检查是否有结果
                 if (!searchJson.has("result") || searchJson.isNull("result")) {
                     return null
                 }
-
                 val result = searchJson.getJSONObject("result")
                 if (!result.has("songs") || result.isNull("songs")) {
                     return null
                 }
-
                 val songs = result.getJSONArray("songs")
-
                 if (songs.length() > 0) {
-                    // 获取第一首歌曲的ID
                     val songId = songs.getJSONObject(0).getInt("id")
-
-                    // 使用网易云音乐官方歌词API
                     val lyricUrl = "https://music.163.com/api/song/lyric?id=$songId&lv=1&tv=-1"
                     val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                         "Referer" to "https://music.163.com/"
                     ))
-
                     val lyricObj = JSONObject(lyricResult)
-
                     if (lyricObj.has("lrc") && !lyricObj.isNull("lrc") &&
                         lyricObj.getJSONObject("lrc").has("lyric")) {
                         return lyricObj.getJSONObject("lrc").getString("lyric")
@@ -764,42 +755,31 @@ class LyricFileServlet : HttpServlet() {
             } catch (e: Exception) {
                 println("从网易云官方API获取歌词失败: ${e.message}")
             }
-
             return null
         }
-
-        // 辅助方法：获取URL内容（带请求头）
         private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
             val url = URL(urlString)
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.connectTimeout = 3000
             conn.readTimeout = 3000
-
-            // 添加请求头
             headers.forEach { (key, value) ->
                 conn.setRequestProperty(key, value)
             }
-
             return conn.inputStream.bufferedReader().use { it.readText() }
         }
-
-        // 辅助方法：获取URL内容
         private fun getUrlContent(urlString: String): String {
             return getUrlContentWithHeaders(urlString, emptyMap())
         }
     }
-
     /**
      * QQ音乐歌词API
      */
     class LyricQQServlet : HttpServlet() {
         private val gson = Gson()
-
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             val media = PlaybackStateHolder.currentMedia
             if (media == null) {
                 resp.status = HttpServletResponse.SC_NOT_FOUND
@@ -809,11 +789,8 @@ class LyricFileServlet : HttpServlet() {
                 )))
                 return
             }
-
             try {
-                // 获取歌词
                 val lyricContent = getLyricFromQQMusic(media.title, media.artist)
-
                 if (lyricContent != null && lyricContent.isNotBlank()) {
                     val response = mapOf(
                         "status" to "success",
@@ -836,57 +813,37 @@ class LyricFileServlet : HttpServlet() {
                 )))
             }
         }
-
-        // 从QQ音乐获取歌词
         private fun getLyricFromQQMusic(title: String?, artist: String?): String? {
             if (title.isNullOrBlank()) return null
-
             try {
-                // 构建搜索URL
                 val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
                 val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
                 val searchUrl = "https://c.y.qq.com/soso/fcgi-bin/music_search_new_platform?format=json&p=1&n=1&w=$encodedQuery"
-
-                // 执行搜索请求
                 val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
                     "User-AAgent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                     "Referer" to "https://y.qq.com/"
                 ))
-
                 val searchJson = JSONObject(searchResult)
-
-                // 检查是否有结果
                 if (!searchJson.has("data") || searchJson.isNull("data") ||
                     !searchJson.getJSONObject("data").has("song") ||
                     searchJson.getJSONObject("data").isNull("song") ||
                     searchJson.getJSONObject("data").getJSONObject("song").getJSONArray("list").length() == 0) {
                     return null
                 }
-
-                // 获取歌曲列表
                 val songList = searchJson.getJSONObject("data").getJSONObject("song").getJSONArray("list")
-
                 if (songList.length() > 0) {
-                    // 获取第一首歌曲的f字段
                     val fField = songList.getJSONObject(0).getString("f")
                     val fParts = fField.split("|")
-
                     if (fParts.size > 0) {
-                        // 获取歌曲ID（songid）
                         val songId = fParts[0]
-
-                        // 使用歌曲ID获取真实的mid
                         val mid = getSongMidFromId(songId)
                         if (mid != null) {
-                            // 使用QQ音乐歌词API获取歌词
                             val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?format=json&nobase64=1&songmid=$mid"
                             val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
                                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                                 "Referer" to "https://y.qq.com/portal/player.html"
                             ))
-
                             val lyricObj = JSONObject(lyricResult)
-
                             if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
                                 return lyricObj.getString("lyric")
                             }
@@ -897,29 +854,20 @@ class LyricFileServlet : HttpServlet() {
                 println("从QQ音乐API获取歌词失败: ${e.message}")
                 e.printStackTrace()
             }
-
             return null
         }
-
-        // 通过歌曲ID获取真实的mid
         private fun getSongMidFromId(songId: String): String? {
             try {
                 val songDetailUrl = "https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?tpl=yqq_song_detail&format=jsonp&callback=getOneSongInfoCallback&songid=$songId"
-
-                // 获取歌曲详情
                 val songDetailResult = getUrlContentWithHeaders(songDetailUrl, mapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                     "Referer" to "https://y.qq.com/"
                 ))
-
-                // 处理JSONP响应，提取JSON部分
                 val jsonStart = songDetailResult.indexOf('{')
                 val jsonEnd = songDetailResult.lastIndexOf('}') + 1
                 if (jsonStart >= 0 && jsonEnd > jsonStart) {
                     val jsonStr = songDetailResult.substring(jsonStart, jsonEnd)
                     val songDetailJson = JSONObject(jsonStr)
-
-                    // 检查是否有数据
                     if (songDetailJson.has("data") && !songDetailJson.isNull("data")) {
                         val data = songDetailJson.getJSONArray("data")
                         if (data.length() > 0) {
@@ -940,37 +888,28 @@ class LyricFileServlet : HttpServlet() {
                 println("获取歌曲mid失败: ${e.message}")
                 e.printStackTrace()
             }
-
             return null
         }
-
-        // 辅助方法：获取URL内容（带请求头)
         private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
             val url = URL(urlString)
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.connectTimeout = 3000
             conn.readTimeout = 3000
-
-            // 添加请求头
             headers.forEach { (key, value) ->
                 conn.setRequestProperty(key, value)
             }
-
             return conn.inputStream.bufferedReader().use { it.readText() }
         }
     }
-
     /**
      * 酷狗音乐歌词API
      */
     class LyricKugouServlet : HttpServlet() {
         private val gson = Gson()
-
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             val media = PlaybackStateHolder.currentMedia
             if (media == null) {
                 resp.status = HttpServletResponse.SC_NOT_FOUND
@@ -980,11 +919,8 @@ class LyricFileServlet : HttpServlet() {
                 )))
                 return
             }
-
             try {
-                // 获取歌词
                 val lyricContent = getLyricFromKugou(media.title, media.artist)
-
                 if (lyricContent != null && lyricContent.isNotBlank()) {
                     val response = mapOf(
                         "status" to "success",
@@ -1007,48 +943,31 @@ class LyricFileServlet : HttpServlet() {
                 )))
             }
         }
-
-        // 从酷狗音乐获取歌词
         private fun getLyricFromKugou(title: String?, artist: String?): String? {
             if (title.isNullOrBlank()) return null
-
             try {
-                // 构建搜索URL
                 val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
                 val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
                 val searchUrl = "http://ioscdn.kugou.com/api/v3/search/song?page=1&pagesize=1&version=7910&keyword=$encodedQuery"
-
-                // 执行搜索请求
                 val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
                 ))
-
                 val searchJson = JSONObject(searchResult)
-
-                // 检查是否有结果
                 if (!searchJson.has("data") || searchJson.isNull("data") ||
                     !searchJson.getJSONObject("data").has("info") ||
                     searchJson.getJSONObject("data").isNull("info") ||
                     searchJson.getJSONObject("data").getJSONArray("info").length() == 0) {
                     return null
                 }
-
-                // 获取歌曲列表
                 val songList = searchJson.getJSONObject("data").getJSONArray("info")
-
                 if (songList.length() > 0) {
-                    // 获取第一首歌曲的hash字段
                     val songInfo = songList.getJSONObject(0)
                     if (songInfo.has("hash") && !songInfo.isNull("hash")) {
                         val hash = songInfo.getString("hash")
-
-                        // 使用hash获取歌词信息
                         val lyricInfo = getLyricInfoFromHash(hash)
                         if (lyricInfo != null) {
                             val id = lyricInfo.first
                             val accesskey = lyricInfo.second
-
-                            // 使用id和accesskey下载歌词
                             return getLyricFromKugouWithIdAndKey(id, accesskey)
                         }
                     }
@@ -1057,30 +976,20 @@ class LyricFileServlet : HttpServlet() {
                 println("从酷狗音乐API获取歌词失败: ${e.message}")
                 e.printStackTrace()
             }
-
             return null
         }
-
-        // 通过hash获取歌词信息（id和accesskey）
         private fun getLyricInfoFromHash(hash: String): Pair<String, String>? {
             try {
                 val lyricInfoUrl = "http://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword=%20-%20&duration=139039&hash=$hash"
-
-                // 获取歌词信息
                 val lyricInfoResult = getUrlContentWithHeaders(lyricInfoUrl, mapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
                 ))
-
                 val lyricInfoJson = JSONObject(lyricInfoResult)
-
-                // 检查是否有结果
                 if (lyricInfoJson.has("candidates") && !lyricInfoJson.isNull("candidates") &&
                     lyricInfoJson.getJSONArray("candidates").length() > 0) {
-
                     val candidate = lyricInfoJson.getJSONArray("candidates").getJSONObject(0)
                     if (candidate.has("id") && !candidate.isNull("id") &&
                         candidate.has("accesskey") && !candidate.isNull("accesskey")) {
-
                         val id = candidate.getString("id")
                         val accesskey = candidate.getString("accesskey")
                         return Pair(id, accesskey)
@@ -1090,54 +999,37 @@ class LyricFileServlet : HttpServlet() {
                 println("获取歌词信息失败: ${e.message}")
                 e.printStackTrace()
             }
-
             return null
         }
-
-        // 使用id和accesskey获取歌词
         private fun getLyricFromKugouWithIdAndKey(id: String, accesskey: String): String? {
             try {
                 val lyricUrl = "http://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&charset=utf8&id=$id&accesskey=$accesskey"
-
-                // 获取歌词
                 val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
                 ))
-
                 val lyricJson = JSONObject(lyricResult)
-
-                // 检查是否有歌词内容
                 if (lyricJson.has("content") && !lyricJson.isNull("content")) {
                     val base64Content = lyricJson.getString("content")
-
-                    // 解码base64歌词
                     return String(Base64.getDecoder().decode(base64Content), Charsets.UTF_8)
                 }
             } catch (e: Exception) {
                 println("获取歌词内容失败: ${e.message}")
                 e.printStackTrace()
             }
-
             return null
         }
-
-        // 辅助方法：获取URL内容（带请求头）
         private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
             val url = URL(urlString)
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.connectTimeout = 3000
             conn.readTimeout = 3000
-
-            // 添加请求头
             headers.forEach { (key, value) ->
                 conn.setRequestProperty(key, value)
             }
-
             return conn.inputStream.bufferedReader().use { it.readText() }
         }
     }
-
     /**
      * 封面图片API
      */
@@ -1150,20 +1042,14 @@ class LyricFileServlet : HttpServlet() {
                 resp.writer.write("封面地址未找到")
                 return
             }
-
             try {
-                // 获取图片内容
                 val url = URL(coverUrl)
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
-
-                // 设置正确的Content-Type
                 val contentType = conn.contentType ?: "image/jpeg"
                 resp.contentType = contentType
-
-                // 将图片数据写入响应
                 conn.inputStream.copyTo(resp.outputStream)
             } catch (e: Exception) {
                 resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
@@ -1171,7 +1057,6 @@ class LyricFileServlet : HttpServlet() {
             }
         }
     }
-
     /**
      * 当前播放位置API
      */
@@ -1179,30 +1064,23 @@ class LyricFileServlet : HttpServlet() {
         @Throws(IOException::class)
         override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
             resp.contentType = "application/json;charset=UTF-8"
-
             val position = PlaybackStateHolder.currentPosition
             val formatted = formatPosition(position)
-
             val response = mapOf(
                 "status" to "success",
                 "position" to position,
                 "formatted" to formatted
             )
-
             resp.writer.write(Gson().toJson(response))
         }
-
-        // 格式化位置为分钟:秒:毫秒
         private fun formatPosition(position: Long): String {
             val totalSeconds = position / 1000
             val minutes = totalSeconds / 60
             val seconds = totalSeconds % 60
             val millis = position % 1000
-
             return String.format("%02d:%02d:%03d", minutes, seconds, millis)
         }
     }
-
     /**
      * 发送系统媒体键事件
      */
@@ -1216,11 +1094,8 @@ class LyricFileServlet : HttpServlet() {
             println("发送媒体键事件失败: ${e.message}")
         }
     }
-
-    // JNA接口
     interface User32Ex : com.sun.jna.Library {
         fun keybd_event(bVk: Byte, bScan: Byte, dwFlags: Int, dwExtraInfo: Int)
-
         companion object {
             val INSTANCE: User32Ex by lazy {
                 Native.load("user32", User32Ex::class.java) as User32Ex
