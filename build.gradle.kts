@@ -31,6 +31,7 @@ val pluginVersion = "2.1.2"
 val pluginProvider = "zmxl"
 val PluginHasConfig = "true"
 val PluginOpenSourceUrl = "https://github.com/zmxlsss666/SaltLyricPlugin"
+val PluginDescription = "一个适用于 Salt Player For Windows 的桌面歌词插件，觉得好用请点个Star"
 
 tasks.named<Jar>("jar") {
     manifest {
@@ -40,6 +41,7 @@ tasks.named<Jar>("jar") {
         attributes["Plugin-Provider"] = pluginProvider
         attributes["Plugin-Has-Config"] = PluginHasConfig
         attributes["Plugin-Open-Source-Url"] = PluginOpenSourceUrl
+        attributes["Plugin-Description"] = PluginDescription
     }
 }
 
@@ -54,6 +56,7 @@ tasks.register<Jar>("plugin") {
     }
     archiveExtension.set("zip")
 }
+
 
 
 
