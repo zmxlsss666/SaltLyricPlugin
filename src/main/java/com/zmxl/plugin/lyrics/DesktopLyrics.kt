@@ -13,1218 +13,2348 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.zmxl.plugin.server
+@file:OptIn(UnstableSpwWorkshopApi::class)
+package com.zmxl.plugin.lyrics
 
 import com.google.gson.Gson
 import com.sun.jna.Native
-import com.sun.jna.platform.win32.User32
-import com.zmxl.plugin.control.SmtcController
-import com.zmxl.plugin.playback.PlaybackStateHolder
-import org.eclipse.jetty.server.Server
-import org.eclipse.jetty.servlet.ServletContextHandler
-import org.eclipse.jetty.servlet.ServletHolder
-import jakarta.servlet.http.HttpServlet
-import jakarta.servlet.http.HttpServletRequest
-import jakarta.servlet.http.HttpServletResponse
-import java.io.IOException
-import java.io.InputStream
-import java.io.PrintWriter
+import com.sun.jna.Structure
+import com.sun.jna.platform.win32.WinDef
+import com.xuncorp.spw.workshop.api.config.ConfigHelper
+import com.xuncorp.spw.workshop.api.config.ConfigManager
+import com.xuncorp.spw.workshop.api.UnstableSpwWorkshopApi
+import java.awt.*
+import java.awt.event.*
+import java.awt.image.BufferedImage
+import java.io.BufferedReader
+import java.io.File
+import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
-import java.util.Base64
-import java.util.concurrent.Executors
-import org.json.JSONArray
-import org.json.JSONObject
-// Remove Tika imports
-// Add JAudioTagger imports
-import org.jaudiotagger.audio.AudioFile
-import org.jaudiotagger.audio.AudioFileIO
-import org.jaudiotagger.tag.FieldKey
-import org.jaudiotagger.tag.Tag
-import java.io.File
+import java.util.function.Consumer
+import javax.swing.*
+import javax.swing.border.EmptyBorder
+import kotlin.math.roundToInt
 
-class HttpServer(private val port: Int) {
-    private lateinit var server: Server
-
-    init {
-        SmtcController.init()
-    }
-
-    fun start() {
-        server = Server(port)
-        val context = ServletContextHandler(ServletContextHandler.SESSIONS)
-        context.contextPath = "/"
-        server.handler = context
-
-        // 将HttpServer实例存入ServletContext，以便在Servlet中访问
-        context.setAttribute("httpServer", this)
-
-        // 创建ServletHolder并注册API端点
-        context.addServlet(ServletHolder(NowPlayingServlet()), "/api/now-playing")
-        context.addServlet(ServletHolder(PlayPauseServlet()), "/api/play-pause")
-        context.addServlet(ServletHolder(NextTrackServlet()), "/api/next-track")
-        context.addServlet(ServletHolder(PreviousTrackServlet()), "/api/previous-track")
-        context.addServlet(ServletHolder(VolumeUpServlet()), "/api/volume/up")
-        context.addServlet(ServletHolder(VolumeDownServlet()), "/api/volume/down")
-        context.addServlet(ServletHolder(MuteServlet()), "/api/mute")
-
-        // 注册歌词API
-        context.addServlet(ServletHolder(Lyric163Servlet()), "/api/lyric163") // 网易云歌词API
-        context.addServlet(ServletHolder(LyricQQServlet()), "/api/lyricqq")   // QQ音乐歌词API
-        context.addServlet(ServletHolder(LyricKugouServlet()), "/api/lyrickugou") // 酷狗音乐歌词API
-        context.addServlet(ServletHolder(LyricFileServlet()), "/api/lyric")
-
-        context.addServlet(ServletHolder(PicServlet()), "/api/pic")
-        context.addServlet(ServletHolder(CurrentPositionServlet()), "/api/current-position")
-
-        // 处理所有其他请求，返回控制界面
-        context.addServlet(ServletHolder(object : HttpServlet() {
-            @Throws(IOException::class)
-            override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-                // 从资源文件加载HTML内容
-                val htmlStream: InputStream? = javaClass.getResourceAsStream("/web/index.html")
-                if (htmlStream != null) {
-                    resp.contentType = "text/html;charset=UTF-8"
-                    resp.characterEncoding = "UTF-8"
-                    htmlStream.copyTo(resp.outputStream)
-                } else {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write("HTML resource not found")
-                }
-            }
-        }), "/*")
-
-        try {
-            server.start()
-            println("HTTP服务器已启动，端口: $port")
-        } catch (e: Exception) {
-            println("HTTP服务器启动失败: ${e.message}")
-            e.printStackTrace()
-        }
-    }
-
-    fun stop() {
-        try {
-            server.stop()
-            SmtcController.shutdown()
-            println("HTTP服务器已停止")
-        } catch (e: Exception) {
-            println("HTTP服务器停止失败: ${e.message}")
-            e.printStackTrace()
-        }
-    }
-
-    /**
-     * 获取当前播放信息API
-     */
-    class NowPlayingServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            val responseData = mapOf(
-                "status" to "success",
-                "title" to PlaybackStateHolder.currentMedia?.title,
-                "artist" to PlaybackStateHolder.currentMedia?.artist,
-                "album" to PlaybackStateHolder.currentMedia?.album,
-                "isPlaying" to PlaybackStateHolder.isPlaying,
-                "position" to PlaybackStateHolder.currentPosition,
-                "volume" to PlaybackStateHolder.volume, // 返回0-100整数音量
-                "timestamp" to System.currentTimeMillis()
-            )
-
-            PrintWriter(resp.writer).use { out ->
-                out.print(Gson().toJson(responseData))
-            }
-        }
-    }
-
-    /**
-     * 播放/暂停切换API
-     */
-    class PlayPauseServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            try {
-                // 从ServletContext获取HttpServer实例
-                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
-                httpServer.sendMediaKeyEvent(0xB3)
-
-                Thread.sleep(100)
-
-                val response = mapOf(
-                    "status" to "success",
-                    "action" to "play_pause_toggled",
-                    "isPlaying" to PlaybackStateHolder.isPlaying,
-                    "message" to if (PlaybackStateHolder.isPlaying) "已开始播放" else "已暂停"
-                )
-                resp.writer.write(Gson().toJson(response))
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(Gson().toJson(mapOf(
-                    "status" to "error",
-                    "message" to "播放/暂停操作失败: ${e.message}"
-                )))
-            }
-        }
-    }
-
-    /**
-     * 下一曲API
-     */
-    class NextTrackServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            try {
-                SmtcController.handleNextTrack()
-
-                // 从ServletContext获取HttpServer实例
-                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
-                httpServer.sendMediaKeyEvent(0xB0)
-
-                Thread.sleep(100)
-
-                val newMedia = PlaybackStateHolder.currentMedia
-                val response = mapOf(
-                    "status" to "success",
-                    "action" to "next_track",
-                    "newTrack" to (newMedia?.title ?: "未知曲目"),
-                    "message" to "已切换到下一曲"
-                )
-                resp.writer.write(Gson().toJson(response))
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(Gson().toJson(mapOf(
-                    "status" to "error",
-                    "message" to "下一曲操作失败: ${e.message}"
-                )))
-            }
-        }
-    }
-
-    /**
-     * 上一曲API
-     */
-    class PreviousTrackServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            try {
-                SmtcController.handlePreviousTrack()
-
-                // 从ServletContext获取HttpServer实例
-                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
-                httpServer.sendMediaKeyEvent(0xB1)
-
-                Thread.sleep(100)
-
-                val newMedia = PlaybackStateHolder.currentMedia
-                val response = mapOf(
-                    "status" to "success",
-                    "action" to "previous_track",
-                    "newTrack" to (newMedia?.title ?: "未知曲目"),
-                    "message" to "已切换到上一曲"
-                )
-                resp.writer.write(Gson().toJson(response))
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(Gson().toJson(mapOf(
-                    "status" to "error",
-                    "message" to "上一曲操作失败: ${e.message}"
-                )))
-            }
-        }
-    }
-
-    /**
-     * 音量增加API
-     */
-    class VolumeUpServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            try {
-                SmtcController.handleVolumeUp()
-
-                // 从ServletContext获取HttpServer实例
-                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
-                httpServer.sendMediaKeyEvent(0xAF)
-
-                Thread.sleep(50)
-
-                val response = mapOf(
-                    "status" to "success",
-                    "action" to "volume_up",
-                    "currentVolume" to PlaybackStateHolder.volume,
-                    "message" to "音量已增加"
-                )
-                resp.writer.write(Gson().toJson(response))
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(Gson().toJson(mapOf(
-                    "status" to "error",
-                    "message" to "音量增加操作失败: ${e.message}"
-                )))
-            }
-        }
-    }
-
-    /**
-     * 音量减少API
-     */
-    class VolumeDownServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            try {
-                SmtcController.handleVolumeDown()
-
-                // 从ServletContext获取HttpServer实例
-                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
-                httpServer.sendMediaKeyEvent(0xAE)
-
-                Thread.sleep(50)
-
-                val response = mapOf(
-                    "status" to "success",
-                    "action" to "volume_down",
-                    "currentVolume" to PlaybackStateHolder.volume,
-                    "message" to "音量已减少"
-                )
-                resp.writer.write(Gson().toJson(response))
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(Gson().toJson(mapOf(
-                    "status" to "error",
-                    "message" to "音量减少操作失败: ${e.message}"
-                )))
-            }
-        }
-    }
-
-    /**
-     * 静音切换API
-     */
-    class MuteServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            try {
-                SmtcController.handleMute()
-
-                // 从ServletContext获取HttpServer实例
-                val httpServer = req.servletContext.getAttribute("httpServer") as HttpServer
-                httpServer.sendMediaKeyEvent(0xAD)
-
-                Thread.sleep(50)
-
-                val isMuted = PlaybackStateHolder.volume == 0
-                val response = mapOf(
-                    "status" to "success",
-                    "action" to "mute_toggle",
-                    "isMuted" to isMuted,
-                    "message" to if (isMuted) "已静音" else "已取消静音"
-                )
-                resp.writer.write(Gson().toJson(response))
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(Gson().toJson(mapOf(
-                    "status" to "error",
-                    "message" to "静音操作失败: ${e.message}"
-                )))
-            }
-        }
-    }
-
-/**
- * 歌词API - JAudioTagger (专门优化USLT帧提取)
- */
-class LyricFileServlet : HttpServlet() {
+object DesktopLyrics {
+    private var isManuallyHidden = false
+    private val frame = JFrame()
+    private val lyricsPanel = LyricsPanel()
+    private var isDragging = false
+    private var dragStart: Point? = null
+    private var resizeStart: Point? = null
+    private var isResizing = false
+    private val resizeBorder = 8
+    private val timer = Timer(10) { updateLyrics() }
     private val gson = Gson()
-
-    @Throws(IOException::class)
-    override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-        resp.contentType = "application/json;charset=UTF-8"
-
-        val currentMedia = PlaybackStateHolder.currentMedia
-        if (currentMedia == null || currentMedia.path.isNullOrBlank()) {
-            resp.status = HttpServletResponse.SC_BAD_REQUEST
-            resp.writer.write(gson.toJson(mapOf(
-                "status" to "error",
-                "message" to "没有当前播放媒体或媒体路径为空"
-            )))
-            return
+    private var currentSongId = ""
+    private var lastLyricUrl = ""
+    private var lyricCache = mutableMapOf<String, String>()
+    
+    // 字体设置
+    private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
+    private var japaneseFont = Font("MS Gothic", Font.BOLD, 24)
+    private var englishFont = Font("Arial", Font.BOLD, 24)
+    
+    // 新增设置选项
+    private var isLocked = false
+    private var titleArtistFormat = 0 // 0: 歌名-歌手, 1: 歌手-歌名
+    
+    // 控制按钮面板
+    private lateinit var topPanel: JPanel
+    private lateinit var playPauseButton: JButton
+    private lateinit var titleArtistLabel: JLabel
+    private lateinit var lockButton: JButton
+    private lateinit var settingsButton: JButton
+    private lateinit var minimizeButton: JButton
+    
+    // 滚动文本相关
+    private var scrollOffset = 0
+    private var scrollDirection = 1
+    private var scrollTimer: Timer? = null
+    private var scrollText = ""
+    private var maxTextWidth = 0
+    
+    // 存储当前歌曲信息用于滚动显示
+    private var currentTitle = ""
+    private var currentArtist = ""
+    
+    // 毛玻璃效果相关
+    private var backgroundAlpha = 0f
+    private val backgroundTimer = Timer(16) {
+        val targetAlpha = if (frame.mousePosition != null && !isLocked) 0.9f else 0f
+        backgroundAlpha += (targetAlpha - backgroundAlpha) * 0.15f // 更平滑的过渡
+        if (backgroundAlpha < 0.01f) {
+            // 完全透明时禁用毛玻璃效果
+            disableAcrylicEffect()
+        } else {
+            // 启用毛玻璃效果
+            enableAcrylicEffect((backgroundAlpha * 255).roundToInt())
         }
-
-        val filePath = currentMedia.path
-        println("使用当前播放媒体路径: $filePath")
-
-        try {
-            val file = File(filePath)
-            if (!file.exists() || !file.isFile) {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "文件不存在: $filePath"
-                )))
-                return
-            }
-
-            // 检查文件扩展名
-            val extension = file.extension.lowercase()
-            val supportedFormats = listOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "opus")
-            if (!supportedFormats.contains(extension)) {
-                resp.status = HttpServletResponse.SC_BAD_REQUEST
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "不支持的音频文件格式: $extension. 支持格式: ${supportedFormats.joinToString()}"
-                )))
-                return
-            }
-
-            // 使用JAudioTagger提取歌词
-            val lyrics = extractLyricsFromFile(file)
-
-            if (lyrics.isNotBlank()) {
-                val response = mapOf(
-                    "status" to "success",
-                    "lyric" to lyrics,
-                    "source" to "file_metadata",
-                    "file" to filePath,
-                    "format" to extension
-                )
-                resp.writer.write(gson.toJson(response))
-            } else {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "文件中未找到歌词元数据",
-                    "file" to filePath,
-                    "format" to extension
-                )))
-            }
-        } catch (e: Exception) {
-            resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-            resp.writer.write(gson.toJson(mapOf(
-                "status" to "error",
-                "message" to "提取文件歌词失败: ${e.message}"
-            )))
-            e.printStackTrace()
+        frame.repaint()
+    }
+    
+    // 配置文件相关
+    private data class AppConfig(
+        var windowX: Int = 0,
+        var windowY: Int = 0,
+        var windowWidth: Int = 560,
+        var windowHeight: Int = 180,
+        var isLocked: Boolean = false,
+        var titleArtistFormat: Int = 0,
+        var chineseFontName: String = "微软雅黑",
+        var japaneseFontName: String = "MS Gothic",
+        var englishFontName: String = "Arial",
+        var fontSize: Int = 24,
+        var fontStyle: Int = Font.BOLD,
+        var lyricColor: Int = Color.WHITE.rgb,
+        var highlightColor: Int = Color(255, 215, 0).rgb,
+        var backgroundColor: Int = Color(0, 0, 0, 180).rgb,
+        var transparency: Float = 0.8f,
+        var animationSpeed: Int = 10,
+        var alignment: Int = 0, // 0: CENTER, 1: LEFT, 2: RIGHT
+        var useShadow: Boolean = true
+    )
+    
+    private var appConfig = AppConfig()
+    private val configDir = File(System.getenv("APPDATA") + File.separator + "workshop" + File.separator + "data" + File.separator + "com.zmxl.spw-control-plugin")
+    private val configFile = File(configDir, "desktop_lyrics_config.json")
+    
+    // ConfigManager 支持
+    private lateinit var configManager: ConfigManager
+    private lateinit var configHelper: ConfigHelper
+    
+    // 添加配置更改监听器
+    private var configChangeListener: Consumer<ConfigHelper>? = null
+    
+    // 添加初始化状态标志
+    private var isInitialized = false
+    
+    // 设置对话框实例
+    private var settingsDialog: JDialog? = null
+    
+    // JNA接口定义
+    interface User32Ex : com.sun.jna.platform.win32.User32 {
+        fun SetWindowCompositionAttribute(hWnd: WinDef.HWND, data: WindowCompositionAttributeData): Boolean
+        
+        companion object {
+            val INSTANCE: User32Ex = Native.load("user32", User32Ex::class.java) as User32Ex
         }
     }
-
-    /**
-     * 使用JAudioTagger从音频文件中提取歌词
-     */
-    private fun extractLyricsFromFile(file: File): String {
+    
+    // Windows API常量
+    private val ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
+    private val WCA_ACCENT_POLICY = 19
+    
+    // JNA结构体定义
+    @Structure.FieldOrder("AccentState", "AccentFlags", "GradientColor", "AnimationId")
+    class AccentPolicy : Structure() {
+        @JvmField var AccentState: Int = 0
+        @JvmField var AccentFlags: Int = 0
+        @JvmField var GradientColor: Int = 0
+        @JvmField var AnimationId: Int = 0
+    }
+    
+    @Structure.FieldOrder("Attribute", "Data", "SizeOfData")
+    class WindowCompositionAttributeData : Structure() {
+        @JvmField var Attribute: Int = 0
+        @JvmField var Data: com.sun.jna.Pointer? = null
+        @JvmField var SizeOfData: Int = 0
+    }
+    @JvmStatic
+    fun openSettingsDialog() {
+            // 直接调用单例的方法
+            DesktopLyrics.showSettingsDialog()
+        }
+    
+    fun setConfigManager(manager: ConfigManager) {
+        configManager = manager
+        configHelper = manager.getConfig("desktop_lyrics_config.json")
+        
+        // 添加配置更改监听器
+        configChangeListener = Consumer { helper ->
+            if (isInitialized) {
+                println("检测到配置更改，重新加载配置...")
+                loadConfig()
+                applyConfig()
+                println("配置已更新并应用")
+            }
+        }
+        
         try {
-            val audioFile = AudioFileIO.read(file)
-            val tag = audioFile.tag
-
-            if (tag == null) {
-                println("文件没有标签信息: ${file.name}")
-                return ""
-            }
-
-            // 首先专门尝试提取USLT帧
-            val usltLyrics = extractUSLTFrameDirectly(tag)
-            if (usltLyrics.isNotBlank()) {
-                println("成功从USLT帧提取歌词")
-                return usltLyrics
-            }
-
-            // 如果USLT没有找到，尝试其他常规字段
-            return findLyricsInStandardFields(tag, file.extension)
+            configManager.addConfigChangeListener("desktop_lyrics_config.json", configChangeListener!!)
+            println("配置更改监听器已注册")
         } catch (e: Exception) {
-            println("使用JAudioTagger读取文件失败: ${e.message}")
-            return ""
+            println("注册配置更改监听器失败: ${e.message}")
         }
     }
-
-    /**
-     * 直接提取USLT帧内容
-     */
-    private fun extractUSLTFrameDirectly(tag: Tag): String {
-        try {
-            // 方法1: 使用JAudioTagger的ID3v2特定方法
-            if (tag.toString().contains("ID3v2")) {
-                return extractFromID3v2Tag(tag)
-            }
-
-            // 方法2: 通过字段迭代查找
-            return extractUSLTByFieldIteration(tag)
-        } catch (e: Exception) {
-            println("直接提取USLT帧失败: ${e.message}")
-            return ""
+    
+    fun start() {
+        // 初始化配置管理器
+        if (!::configManager.isInitialized) {
+            // 如果没有设置configManager，使用默认方式
+            loadConfigLegacy()
+        } else {
+            loadConfig()
         }
+        
+        setupUI()
+        timer.start()
+        backgroundTimer.start()
+        isInitialized = true
+        println("桌面歌词已启动")
     }
-
-    /**
-     * 从ID3v2标签提取USLT
-     */
-    private fun extractFromID3v2Tag(tag: Tag): String {
-        try {
-            // 使用反射访问ID3v2Tag的内部方法
-            val tagClass = tag.javaClass
-            
-            // 尝试获取getFirstField方法
-            val getFirstFieldMethod = tagClass.methods.find { 
-                it.name == "getFirstField" && it.parameterCount == 1 
+    
+    fun stop() {
+        isInitialized = false
+        // 移除配置更改监听器
+        configChangeListener?.let {
+            try {
+                // 注意：ConfigManager 可能需要提供移除监听器的方法
+                // 如果不存在移除方法，这个调用可能会失败
+                println("尝试移除配置监听器...")
+            } catch (e: Exception) {
+                println("移除配置监听器失败: ${e.message}")
             }
-            
-            if (getFirstFieldMethod != null) {
-                // 尝试不同的USLT标识符
-                val usltIdentifiers = listOf("USLT", "UNSYNCED LYRICS", "UNSYNCED_LYRICS", "ULT")
+        }
+        
+        saveConfig()
+        timer.stop()
+        backgroundTimer.stop()
+        scrollTimer?.stop()
+        disableAcrylicEffect()
+        frame.dispose()
+        println("桌面歌词已停止")
+    }
+    
+    // 加载配置文件
+    private fun loadConfig() {
+        try {
+            if (::configHelper.isInitialized) {
+                // 使用 ConfigManager 加载配置
+                appConfig.windowX = configHelper.get("windowX", appConfig.windowX)
+                appConfig.windowY = configHelper.get("windowY", appConfig.windowY)
+                appConfig.windowWidth = configHelper.get("windowWidth", appConfig.windowWidth)
+                appConfig.windowHeight = configHelper.get("windowHeight", appConfig.windowHeight)
+                appConfig.isLocked = configHelper.get("isLocked", appConfig.isLocked)
+                appConfig.titleArtistFormat = configHelper.get("titleArtistFormat", appConfig.titleArtistFormat)
                 
-                for (identifier in usltIdentifiers) {
-                    try {
-                        val field = getFirstFieldMethod.invoke(tag, identifier)
-                        if (field != null) {
-                            val fieldString = field.toString()
-                            println("找到USLT字段 [$identifier]: $fieldString")
-                            
-                            // 尝试提取实际歌词内容
-                            val lyricContent = extractLyricContentFromField(field)
-                            if (lyricContent.isNotBlank()) {
-                                return lyricContent
-                            }
-                            
-                            // 如果无法提取内容，返回整个字段字符串
-                            return fieldString
-                        }
-                    } catch (e: Exception) {
-                        // 继续尝试下一个标识符
-                        println("尝试标识符 '$identifier' 失败: ${e.message}")
-                    }
-                }
+                // 字体设置
+                appConfig.chineseFontName = configHelper.get("chineseFontName", appConfig.chineseFontName)
+                appConfig.japaneseFontName = configHelper.get("japaneseFontName", appConfig.japaneseFontName)
+                appConfig.englishFontName = configHelper.get("englishFontName", appConfig.englishFontName)
+                appConfig.fontSize = configHelper.get("fontSize", appConfig.fontSize)
+                appConfig.fontStyle = configHelper.get("fontStyle", appConfig.fontStyle)
+                
+                // 颜色设置
+                appConfig.lyricColor = configHelper.get("lyricColor", appConfig.lyricColor)
+                appConfig.highlightColor = configHelper.get("highlightColor", appConfig.highlightColor)
+                appConfig.backgroundColor = configHelper.get("backgroundColor", appConfig.backgroundColor)
+                appConfig.transparency = configHelper.get("transparency", appConfig.transparency.toString()).toFloat()
+                
+                // 其他设置
+                appConfig.animationSpeed = configHelper.get("animationSpeed", appConfig.animationSpeed)
+                appConfig.alignment = configHelper.get("alignment", appConfig.alignment)
+                appConfig.useShadow = configHelper.get("useShadow", appConfig.useShadow)
+                
+                println("从ConfigManager加载配置成功")
+            } else if (configFile.exists()) {
+                // 回退到文件配置
+                val json = configFile.readText()
+                appConfig = gson.fromJson(json, AppConfig::class.java)
+                println("从文件加载配置成功")
             }
             
-            // 尝试getFields方法获取所有USLT字段
-            val getFieldsMethod = tagClass.methods.find { 
-                it.name == "getFields" && it.parameterCount == 1 
-            }
-            
-            if (getFieldsMethod != null) {
-                val fields = getFieldsMethod.invoke(tag, "USLT") as? List<*>
-                if (fields != null && fields.isNotEmpty()) {
-                    val lyricsBuilder = StringBuilder()
-                    for (field in fields) {
-                        if (field != null) {
-                            val content = extractLyricContentFromField(field)
-                            if (content.isNotBlank()) {
-                                lyricsBuilder.append(content).append("\n")
-                            } else {
-                                lyricsBuilder.append(field.toString()).append("\n")
-                            }
-                        }
-                    }
-                    val result = lyricsBuilder.toString().trim()
-                    if (result.isNotBlank()) {
-                        return result
-                    }
-                }
-            }
+            // 应用配置
+            applyConfig()
         } catch (e: Exception) {
-            println("从ID3v2标签提取USLT失败: ${e.message}")
-        }
-        
-        return ""
-    }
-
-    /**
-     * 从字段对象中提取歌词内容
-     */
-    private fun extractLyricContentFromField(field: Any): String {
-        try {
-            // 尝试调用getContent方法
-            val getContentMethod = field.javaClass.methods.find { it.name == "getContent" }
-            if (getContentMethod != null) {
-                val content = getContentMethod.invoke(field) as? String
-                if (!content.isNullOrBlank()) {
-                    return content
-                }
-            }
-            
-            // 尝试调用toString并清理
-            val fieldString = field.toString()
-            return cleanUSLTContent(fieldString)
-        } catch (e: Exception) {
-            println("提取字段内容失败: ${e.message}")
-            return ""
+            println("加载配置文件失败: ${e.message}")
         }
     }
-
-    /**
-     * 清理USLT内容，移除框架标识符
-     */
-    private fun cleanUSLTContent(rawContent: String): String {
-        var content = rawContent
+    
+    // 应用配置到UI
+    private fun applyConfig() {
+        // 应用窗口位置和大小
+        frame.setSize(appConfig.windowWidth, appConfig.windowHeight)
+        frame.setLocation(appConfig.windowX, appConfig.windowY)
         
-        // 移除常见的框架标识符前缀
-        val prefixes = listOf(
-            "USLT:",
-            "USLT=",
-            "Unsynchronised lyric:",
-            "Unsynchronized lyric:",
-            "Unsynchronized lyric/text transcription:"
+        // 应用状态
+        isLocked = appConfig.isLocked
+        titleArtistFormat = appConfig.titleArtistFormat
+        
+        // 应用字体设置
+        chineseFont = Font(appConfig.chineseFontName, appConfig.fontStyle, appConfig.fontSize)
+        japaneseFont = Font(appConfig.japaneseFontName, appConfig.fontStyle, appConfig.fontSize)
+        englishFont = Font(appConfig.englishFontName, appConfig.fontStyle, appConfig.fontSize)
+        lyricsPanel.setFonts(chineseFont, japaneseFont, englishFont)
+        
+        // 应用颜色设置
+        lyricsPanel.lyricColor = Color(appConfig.lyricColor)
+        lyricsPanel.highlightColor = Color(appConfig.highlightColor)
+        lyricsPanel.backgroundColor = Color(appConfig.backgroundColor)
+        lyricsPanel.transparency = appConfig.transparency
+        lyricsPanel.background = Color(
+            lyricsPanel.backgroundColor.red,
+            lyricsPanel.backgroundColor.green,
+            lyricsPanel.backgroundColor.blue,
+            (255 * lyricsPanel.transparency).roundToInt()
         )
         
-        prefixes.forEach { prefix ->
-            if (content.startsWith(prefix, ignoreCase = true)) {
-                content = content.substring(prefix.length).trim()
-            }
+        // 应用其他设置
+        lyricsPanel.animationSpeed = appConfig.animationSpeed
+        lyricsPanel.alignment = when (appConfig.alignment) {
+            1 -> LyricsPanel.Alignment.LEFT
+            2 -> LyricsPanel.Alignment.RIGHT
+            else -> LyricsPanel.Alignment.CENTER
+        }
+        lyricsPanel.useShadow = appConfig.useShadow
+        
+        // 更新锁定按钮状态
+        if (::lockButton.isInitialized) {
+            lockButton.text = if (isLocked) "🔒" else "🔓"
         }
         
-        // 移除语言代码和描述（如果存在）
-        // USLT帧格式通常为: [语言][描述]\0[歌词]
-        if (content.length >= 5 && content.substring(3, 5) == "\u0000") {
-            content = content.substring(5)
-        }
-        
-        return content.trim()
+        println("配置已应用到UI")
     }
-
-    /**
-     * 通过字段迭代查找USLT
-     */
-    private fun extractUSLTByFieldIteration(tag: Tag): String {
-        val lyricsBuilder = StringBuilder()
-        
+    
+    // 保存配置文件
+    private fun saveConfig() {
         try {
-            // 获取所有字段
-            val fieldsMethod = tag.javaClass.methods.find { it.name == "getFields" }
-            if (fieldsMethod != null) {
-                val fields = fieldsMethod.invoke(tag) as? List<*>
-                fields?.forEach { field ->
-                    if (field != null) {
-                        val fieldString = field.toString()
-                        // 查找包含USLT的字段
-                        if (fieldString.contains("USLT", ignoreCase = true) || 
-                            fieldString.contains("UNSYNCED", ignoreCase = true)) {
-                            
-                            println("找到可能的歌词字段: $fieldString")
-                            val content = extractLyricContentFromField(field)
-                            if (content.isNotBlank()) {
-                                lyricsBuilder.append(content).append("\n")
-                            } else {
-                                lyricsBuilder.append(fieldString).append("\n")
-                            }
-                        }
-                    }
+            // 更新配置
+            appConfig.windowX = frame.location.x
+            appConfig.windowY = frame.location.y
+            appConfig.windowWidth = frame.width
+            appConfig.windowHeight = frame.height
+            appConfig.isLocked = isLocked
+            appConfig.titleArtistFormat = titleArtistFormat
+            
+            // 字体设置
+            appConfig.chineseFontName = chineseFont.name
+            appConfig.japaneseFontName = japaneseFont.name
+            appConfig.englishFontName = englishFont.name
+            appConfig.fontSize = chineseFont.size
+            appConfig.fontStyle = chineseFont.style
+            
+            // 颜色设置
+            appConfig.lyricColor = lyricsPanel.lyricColor.rgb
+            appConfig.highlightColor = lyricsPanel.highlightColor.rgb
+            appConfig.backgroundColor = lyricsPanel.backgroundColor.rgb
+            appConfig.transparency = lyricsPanel.transparency
+            
+            // 其他设置
+            appConfig.animationSpeed = lyricsPanel.animationSpeed
+            appConfig.alignment = when (lyricsPanel.alignment) {
+                LyricsPanel.Alignment.LEFT -> 1
+                LyricsPanel.Alignment.RIGHT -> 2
+                else -> 0
+            }
+            appConfig.useShadow = lyricsPanel.useShadow
+            
+            if (::configHelper.isInitialized) {
+                // 使用 ConfigManager 保存配置
+                configHelper.set("windowX", appConfig.windowX)
+                configHelper.set("windowY", appConfig.windowY)
+                configHelper.set("windowWidth", appConfig.windowWidth)
+                configHelper.set("windowHeight", appConfig.windowHeight)
+                configHelper.set("isLocked", appConfig.isLocked)
+                configHelper.set("titleArtistFormat", appConfig.titleArtistFormat)
+                configHelper.set("chineseFontName", appConfig.chineseFontName)
+                configHelper.set("japaneseFontName", appConfig.japaneseFontName)
+                configHelper.set("englishFontName", appConfig.englishFontName)
+                configHelper.set("fontSize", appConfig.fontSize)
+                configHelper.set("fontStyle", appConfig.fontStyle)
+                configHelper.set("lyricColor", appConfig.lyricColor)
+                configHelper.set("highlightColor", appConfig.highlightColor)
+                configHelper.set("backgroundColor", appConfig.backgroundColor)
+                configHelper.set("transparency", appConfig.transparency.toString())
+                configHelper.set("animationSpeed", appConfig.animationSpeed)
+                configHelper.set("alignment", appConfig.alignment)
+                configHelper.set("useShadow", appConfig.useShadow)
+                
+                if (configHelper.save()) {
+                    println("配置已保存到ConfigManager")
+                } else {
+                    println("保存配置到ConfigManager失败")
+                    saveConfigLegacy()
                 }
+            } else {
+                // 回退到文件配置
+                saveConfigLegacy()
             }
         } catch (e: Exception) {
-            println("字段迭代查找USLT失败: ${e.message}")
-        }
-        
-        return lyricsBuilder.toString().trim()
-    }
-
-    /**
-     * 在标准字段中查找歌词
-     */
-    private fun findLyricsInStandardFields(tag: Tag, fileExtension: String): String {
-        // 尝试常见的歌词字段
-        val lyricFields = listOf(
-            FieldKey.LYRICS,
-            FieldKey.LYRICIST,
-            FieldKey.COMMENT
-        )
-
-        // 尝试所有可能的歌词字段
-        for (field in lyricFields) {
-            try {
-                if (tag.hasField(field)) {
-                    val value = tag.getFirst(field)
-                    if (value.isNotBlank()) {
-                        println("找到标准歌词字段: $field = $value")
-                        return value
-                    }
-                }
-            } catch (e: Exception) {
-                println("读取字段 $field 失败: ${e.message}")
-            }
-        }
-
-        return ""
-    }
-}
-    /**
-     * 网易云音乐网络歌词API
-     */
-    class Lyric163Servlet : HttpServlet() {
-        private val gson = Gson()
-
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            val media = PlaybackStateHolder.currentMedia
-            if (media == null) {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "没有当前媒体信息"
-                )))
-                return
-            }
-
-            try {
-                // 尝试多种方式获取歌词
-                val lyricContent = tryGetLyricFromMultipleSources(media.title, media.artist)
-
-                if (lyricContent != null && lyricContent.isNotBlank()) {
-                    val response = mapOf(
-                        "status" to "success",
-                        "lyric" to lyricContent,
-                        "source" to "network"
-                    )
-                    resp.writer.write(gson.toJson(response))
-                } else {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "未找到网络歌词"
-                    )))
-                }
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "获取网络歌词失败: ${e.message}"
-                )))
-            }
-        }
-
-        // 尝试从多个来源获取歌词
-        private fun tryGetLyricFromMultipleSources(title: String?, artist: String?): String? {
-            if (title.isNullOrBlank()) return null
-
-            val lyric1 = getLyricFromNeteaseOfficial(title, artist)
-            if (lyric1 != null) return lyric1
-
-            return null
-        }
-
-        // 从网易云音乐官方API获取歌词
-        private fun getLyricFromNeteaseOfficial(title: String?, artist: String?): String? {
-            try {
-                // 构建搜索URL
-                val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
-                val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
-                val searchUrl = "https://music.163.com/api/search/get?type=1&offset=0&limit=1&s=$encodedQuery"
-
-                // 执行搜索请求
-                val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                    "Referer" to "https://music.163.com/"
-                ))
-
-                val searchJson = JSONObject(searchResult)
-
-                // 检查是否有结果
-                if (!searchJson.has("result") || searchJson.isNull("result")) {
-                    return null
-                }
-
-                val result = searchJson.getJSONObject("result")
-                if (!result.has("songs") || result.isNull("songs")) {
-                    return null
-                }
-
-                val songs = result.getJSONArray("songs")
-
-                if (songs.length() > 0) {
-                    // 获取第一首歌曲的ID
-                    val songId = songs.getJSONObject(0).getInt("id")
-
-                    // 使用网易云音乐官方歌词API
-                    val lyricUrl = "https://music.163.com/api/song/lyric?id=$songId&lv=1&tv=-1"
-                    val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                        "Referer" to "https://music.163.com/"
-                    ))
-
-                    val lyricObj = JSONObject(lyricResult)
-
-                    if (lyricObj.has("lrc") && !lyricObj.isNull("lrc") &&
-                        lyricObj.getJSONObject("lrc").has("lyric")) {
-                        return lyricObj.getJSONObject("lrc").getString("lyric")
-                    }
-                }
-            } catch (e: Exception) {
-                println("从网易云官方API获取歌词失败: ${e.message}")
-            }
-
-            return null
-        }
-
-        // 辅助方法：获取URL内容（带请求头）
-        private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
-            val url = URL(urlString)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
-
-            // 添加请求头
-            headers.forEach { (key, value) ->
-                conn.setRequestProperty(key, value)
-            }
-
-            return conn.inputStream.bufferedReader().use { it.readText() }
-        }
-
-        // 辅助方法：获取URL内容
-        private fun getUrlContent(urlString: String): String {
-            return getUrlContentWithHeaders(urlString, emptyMap())
+            println("保存配置文件失败: ${e.message}")
+            saveConfigLegacy()
         }
     }
-
-    /**
-     * QQ音乐歌词API
-     */
-    class LyricQQServlet : HttpServlet() {
-        private val gson = Gson()
-
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            val media = PlaybackStateHolder.currentMedia
-            if (media == null) {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "没有当前媒体信息"
-                )))
-                return
+    
+    // 保留原有的旧式配置加载方法作为后备
+    private fun loadConfigLegacy() {
+        try {
+            if (configFile.exists()) {
+                val json = configFile.readText()
+                appConfig = gson.fromJson(json, AppConfig::class.java)
+                applyConfig()
+                println("从旧式配置文件加载配置成功")
             }
-
-            try {
-                // 获取歌词
-                val lyricContent = getLyricFromQQMusic(media.title, media.artist)
-
-                if (lyricContent != null && lyricContent.isNotBlank()) {
-                    val response = mapOf(
-                        "status" to "success",
-                        "lyric" to lyricContent,
-                        "source" to "qqmusic"
-                    )
-                    resp.writer.write(gson.toJson(response))
-                } else {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "未找到QQ音乐歌词"
-                    )))
-                }
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "获取QQ音乐歌词失败: ${e.message}"
-                )))
-            }
+        } catch (e: Exception) {
+            println("加载旧式配置文件失败: ${e.message}")
         }
-
-        // 从QQ音乐获取歌词
-        private fun getLyricFromQQMusic(title: String?, artist: String?): String? {
-            if (title.isNullOrBlank()) return null
-
-            try {
-                // 构建搜索URL
-                val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
-                val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
-                val searchUrl = "https://c.y.qq.com/soso/fcgi-bin/music_search_new_platform?format=json&p=1&n=1&w=$encodedQuery"
-
-                // 执行搜索请求
-                val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
-                    "User-AAgent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                    "Referer" to "https://y.qq.com/"
-                ))
-
-                val searchJson = JSONObject(searchResult)
-
-                // 检查是否有结果
-                if (!searchJson.has("data") || searchJson.isNull("data") ||
-                    !searchJson.getJSONObject("data").has("song") ||
-                    searchJson.getJSONObject("data").isNull("song") ||
-                    searchJson.getJSONObject("data").getJSONObject("song").getJSONArray("list").length() == 0) {
-                    return null
-                }
-
-                // 获取歌曲列表
-                val songList = searchJson.getJSONObject("data").getJSONObject("song").getJSONArray("list")
-
-                if (songList.length() > 0) {
-                    // 获取第一首歌曲的f字段
-                    val fField = songList.getJSONObject(0).getString("f")
-                    val fParts = fField.split("|")
-
-                    if (fParts.size > 0) {
-                        // 获取歌曲ID（songid）
-                        val songId = fParts[0]
-
-                        // 使用歌曲ID获取真实的mid
-                        val mid = getSongMidFromId(songId)
-                        if (mid != null) {
-                            // 使用QQ音乐歌词API获取歌词
-                            val lyricUrl = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?format=json&nobase64=1&songmid=$mid"
-                            val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
-                                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                                "Referer" to "https://y.qq.com/portal/player.html"
-                            ))
-
-                            val lyricObj = JSONObject(lyricResult)
-
-                            if (lyricObj.has("lyric") && !lyricObj.isNull("lyric")) {
-                                return lyricObj.getString("lyric")
-                            }
+    }
+    
+    // 保留原有的旧式配置保存方法作为后备
+    private fun saveConfigLegacy() {
+        try {
+            // 确保目录存在
+            if (!configDir.exists()) {
+                configDir.mkdirs()
+            }
+            
+            // 保存到文件
+            val json = gson.toJson(appConfig)
+            configFile.writeText(json)
+            println("配置已保存到文件")
+        } catch (e: Exception) {
+            println("保存旧式配置文件失败: ${e.message}")
+        }
+    }
+    
+    // 启用Windows毛玻璃效果
+    private fun enableAcrylicEffect(alpha: Int) {
+        try {
+            // 使用反射获取窗口句柄
+            val awtWindow = frame
+            val toolkit = Toolkit.getDefaultToolkit()
+            val getWindowMethod = toolkit.javaClass.getDeclaredMethod("getWindow", Window::class.java)
+            getWindowMethod.isAccessible = true
+            val window = getWindowMethod.invoke(toolkit, awtWindow)
+            val getWindowHandleMethod = window.javaClass.getDeclaredMethod("getWindowHandle")
+            getWindowHandleMethod.isAccessible = true
+            val handle = getWindowHandleMethod.invoke(window) as Long
+            val hwnd = WinDef.HWND(com.sun.jna.Pointer.createConstant(handle))
+            val accent = AccentPolicy()
+            accent.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND
+            accent.AccentFlags = 2
+            accent.GradientColor = (alpha shl 24) or 0x000000 // ARGB格式，A=alpha, RGB=黑色
+            val data = WindowCompositionAttributeData()
+            data.Attribute = WCA_ACCENT_POLICY
+            data.Data = accent.pointer
+            data.SizeOfData = accent.size()
+            User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
+        } catch (e: Exception) {
+            println("启用毛玻璃效果失败: ${e.message}")
+            // 备用方案：使用半透明背景
+            frame.background = Color(
+                0, 0, 0, (alpha / 255f * 180).roundToInt()
+            )
+        }
+    }
+    
+    // 禁用毛玻璃效果
+    private fun disableAcrylicEffect() {
+        try {
+            // 使用反射获取窗口句柄
+            val awtWindow = frame
+            val toolkit = Toolkit.getDefaultToolkit()
+            val getWindowMethod = toolkit.javaClass.getDeclaredMethod("getWindow", Window::class.java)
+            getWindowMethod.isAccessible = true
+            val window = getWindowMethod.invoke(toolkit, awtWindow)
+            val getWindowHandleMethod = window.javaClass.getDeclaredMethod("getWindowHandle")
+            getWindowHandleMethod.isAccessible = true
+            val handle = getWindowHandleMethod.invoke(window) as Long
+            val hwnd = WinDef.HWND(com.sun.jna.Pointer.createConstant(handle))
+            val accent = AccentPolicy()
+            accent.AccentState = 0 // 禁用特效
+            val data = WindowCompositionAttributeData()
+            data.Attribute = WCA_ACCENT_POLICY
+            data.Data = accent.pointer
+            data.SizeOfData = accent.size()
+            User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
+        } catch (e: Exception) {
+            println("禁用毛玻璃效果失败: ${e.message}")
+            // 备用方案：恢复透明背景
+            frame.background = Color(0, 0, 0, 0)
+        }
+    }
+    
+    private fun setupUI() {
+        frame.apply {
+            title = "Salt Player 桌面歌词"
+            isUndecorated = true
+            background = Color(0, 0, 0, 0)
+            setAlwaysOnTop(true)
+            isFocusable = false
+            focusableWindowState = false
+            
+            // 创建内容面板
+            contentPane = JPanel(BorderLayout()).apply {
+                background = Color(0, 0, 0, 0)
+                isOpaque = false
+                
+                // 添加歌词面板
+                add(lyricsPanel, BorderLayout.CENTER)
+                
+                // 添加顶部控制栏
+                topPanel = createTopControlBar()
+                add(topPanel, BorderLayout.NORTH)
+            }
+            
+            // 设置窗口大小和位置（已从配置文件加载）
+            
+            // 添加键盘快捷键
+            setupKeyboardShortcuts()
+            
+            // 添加鼠标事件监听器
+            addMouseListener(object : MouseAdapter() {
+                override fun mousePressed(e: MouseEvent) {
+                    if (!isLocked) {
+                        val cursorType = getCursorType(e.point)
+                        if (cursorType != Cursor.DEFAULT_CURSOR) {
+                            isResizing = true
+                            resizeStart = e.point
+                            frame.cursor = Cursor.getPredefinedCursor(cursorType)
+                        } else {
+                            isDragging = true
+                            dragStart = e.point
+                            frame.cursor = Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
                         }
                     }
                 }
-            } catch (e: Exception) {
-                println("从QQ音乐API获取歌词失败: ${e.message}")
-                e.printStackTrace()
-            }
-
-            return null
-        }
-
-        // 通过歌曲ID获取真实的mid
-        private fun getSongMidFromId(songId: String): String? {
-            try {
-                val songDetailUrl = "https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?tpl=yqq_song_detail&format=jsonp&callback=getOneSongInfoCallback&songid=$songId"
-
-                // 获取歌曲详情
-                val songDetailResult = getUrlContentWithHeaders(songDetailUrl, mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                    "Referer" to "https://y.qq.com/"
-                ))
-
-                // 处理JSONP响应，提取JSON部分
-                val jsonStart = songDetailResult.indexOf('{')
-                val jsonEnd = songDetailResult.lastIndexOf('}') + 1
-                if (jsonStart >= 0 && jsonEnd > jsonStart) {
-                    val jsonStr = songDetailResult.substring(jsonStart, jsonEnd)
-                    val songDetailJson = JSONObject(jsonStr)
-
-                    // 检查是否有数据
-                    if (songDetailJson.has("data") && !songDetailJson.isNull("data")) {
-                        val data = songDetailJson.getJSONArray("data")
-                        if (data.length() > 0) {
-                            val songInfo = data.getJSONObject(0)
-                            if (songInfo.has("singer") && !songInfo.isNull("singer")) {
-                                val singers = songInfo.getJSONArray("singer")
-                                if (singers.length() > 0) {
-                                    val singer = singers.getJSONObject(0)
-                                    if (singer.has("mid") && !singer.isNull("mid")) {
-                                        return singer.getString("mid")
-                                    }
+                
+                override fun mouseReleased(e: MouseEvent) {
+                    if (!isLocked) {
+                        val wasDraggingOrResizing = isDragging || isResizing
+                        isDragging = false
+                        isResizing = false
+                        frame.cursor = Cursor.getDefaultCursor()
+                        if (wasDraggingOrResizing) {
+                            saveConfig()
+                        }
+                    }
+                }
+                
+                override fun mouseClicked(e: MouseEvent) {
+                    if (e.clickCount == 2 && !isLocked) {
+                        lyricsPanel.toggleTransparency()
+                    }
+                }
+                
+                override fun mouseEntered(e: MouseEvent) {
+                    if (!isLocked) {
+                        topPanel.isVisible = true
+                        updateCursor(e.point)
+                    }
+                }
+                
+                override fun mouseExited(e: MouseEvent) {
+                    if (!isLocked) {
+                        // 只有当鼠标不在控制面板上时才隐藏
+                        try {
+                            // 修复：检查组件是否已显示在屏幕上
+                            if (topPanel.isShowing) {
+                                val point = MouseInfo.getPointerInfo().location
+                                val panelBounds = topPanel.bounds
+                                panelBounds.location = topPanel.locationOnScreen
+                                if (!panelBounds.contains(point)) {
+                                    topPanel.isVisible = false
+                                }
+                            } else {
+                                topPanel.isVisible = false
+                            }
+                        } catch (ex: Exception) {
+                            // 如果获取位置失败，直接隐藏面板
+                            topPanel.isVisible = false
+                        }
+                        frame.cursor = Cursor.getDefaultCursor()
+                    }
+                }
+            })
+            
+            addMouseMotionListener(object : MouseMotionAdapter() {
+                override fun mouseDragged(e: MouseEvent) {
+                    if (!isLocked) {
+                        if (isResizing && resizeStart != null) {
+                            val dx = e.x - resizeStart!!.x
+                            val dy = e.y - resizeStart!!.y
+                            val cursorType = getCursorType(e.point)
+                            val newWidth = maxOf(frame.width + (if (cursorType == Cursor.E_RESIZE_CURSOR || cursorType == Cursor.SE_RESIZE_CURSOR || cursorType == Cursor.NE_RESIZE_CURSOR) dx else 0), 300)
+                            val newHeight = maxOf(frame.height + (if (cursorType == Cursor.S_RESIZE_CURSOR || cursorType == Cursor.SE_RESIZE_CURSOR || cursorType == Cursor.SW_RESIZE_CURSOR) dy else 0), 100)
+                            
+                            // 根据不同的调整方向调整窗口位置和大小
+                            when (cursorType) {
+                                Cursor.N_RESIZE_CURSOR -> {
+                                    val newY = frame.y + dy
+                                    setBounds(frame.x, newY, frame.width, newHeight)
+                                }
+                                Cursor.S_RESIZE_CURSOR -> {
+                                    setSize(frame.width, newHeight)
+                                }
+                                Cursor.E_RESIZE_CURSOR -> {
+                                    setSize(newWidth, frame.height)
+                                }
+                                Cursor.W_RESIZE_CURSOR -> {
+                                    val newX = frame.x + dx
+                                    setBounds(newX, frame.y, newWidth, frame.height)
+                                }
+                                Cursor.NE_RESIZE_CURSOR -> {
+                                    val newY = frame.y + dy
+                                    setBounds(frame.x, newY, newWidth, newHeight)
+                                }
+                                Cursor.NW_RESIZE_CURSOR -> {
+                                    val newX = frame.x + dx
+                                    val newY = frame.y + dy
+                                    setBounds(newX, newY, newWidth, newHeight)
+                                }
+                                Cursor.SE_RESIZE_CURSOR -> {
+                                    setSize(newWidth, newHeight)
+                                }
+                                Cursor.SW_RESIZE_CURSOR -> {
+                                    val newX = frame.x + dx
+                                    setBounds(newX, frame.y, newWidth, newHeight)
                                 }
                             }
+                            resizeStart = e.point
+                        } else if (isDragging && dragStart != null) {
+                            val currentLocation = location
+                            setLocation(
+                                currentLocation.x + e.x - dragStart!!.x,
+                                currentLocation.y + e.y - dragStart!!.y
+                            )
                         }
                     }
                 }
-            } catch (e: Exception) {
-                println("获取歌曲mid失败: ${e.message}")
-                e.printStackTrace()
+                
+                override fun mouseMoved(e: MouseEvent) {
+                    if (!isLocked) {
+                        updateCursor(e.point)
+                    }
+                }
+            })
+            
+            // 添加窗口状态监听器
+            addWindowStateListener { e ->
+                if (e.newState == Frame.NORMAL) {
+                    updateLyrics()
+                    lyricsPanel.repaint()
+                }
             }
-
-            return null
-        }
-
-        // 辅助方法：获取URL内容（带请求头)
-        private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
-            val url = URL(urlString)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
-
-            // 添加请求头
-            headers.forEach { (key, value) ->
-                conn.setRequestProperty(key, value)
+            
+            // 添加系统托盘图标
+            if (SystemTray.isSupported()) {
+                setupSystemTray()
             }
-
-            return conn.inputStream.bufferedReader().use { it.readText() }
+            
+            // 初始状态隐藏控制面板
+            topPanel.isVisible = false
+            isVisible = true
         }
     }
-
-    /**
-     * 酷狗音乐歌词API
-     */
-    class LyricKugouServlet : HttpServlet() {
-        private val gson = Gson()
-
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            val media = PlaybackStateHolder.currentMedia
-            if (media == null) {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "没有当前媒体信息"
-                )))
-                return
-            }
-
-            try {
-                // 获取歌词
-                val lyricContent = getLyricFromKugou(media.title, media.artist)
-
-                if (lyricContent != null && lyricContent.isNotBlank()) {
-                    val response = mapOf(
-                        "status" to "success",
-                        "lyric" to lyricContent,
-                        "source" to "kugou"
-                    )
-                    resp.writer.write(gson.toJson(response))
-                } else {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "未找到酷狗音乐歌词"
-                    )))
-                }
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write(gson.toJson(mapOf(
-                    "status" to "error",
-                    "message" to "获取酷狗音乐歌词失败: ${e.message}"
-                )))
-            }
+    
+    private fun getCursorType(point: Point): Int {
+        val x = point.x
+        val y = point.y
+        val width = frame.width
+        val height = frame.height
+        
+        return when {
+            x < resizeBorder && y < resizeBorder -> Cursor.NW_RESIZE_CURSOR
+            x < resizeBorder && y > height - resizeBorder -> Cursor.SW_RESIZE_CURSOR
+            x > width - resizeBorder && y < resizeBorder -> Cursor.NE_RESIZE_CURSOR
+            x > width - resizeBorder && y > height - resizeBorder -> Cursor.SE_RESIZE_CURSOR
+            x < resizeBorder -> Cursor.W_RESIZE_CURSOR
+            x > width - resizeBorder -> Cursor.E_RESIZE_CURSOR
+            y < resizeBorder -> Cursor.N_RESIZE_CURSOR
+            y > height - resizeBorder -> Cursor.S_RESIZE_CURSOR
+            else -> Cursor.DEFAULT_CURSOR
         }
-
-        // 从酷狗音乐获取歌词
-        private fun getLyricFromKugou(title: String?, artist: String?): String? {
-            if (title.isNullOrBlank()) return null
-
-            try {
-                // 构建搜索URL
-                val searchQuery = if (!artist.isNullOrBlank()) "$title $artist" else title
-                val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
-                val searchUrl = "http://ioscdn.kugou.com/api/v3/search/song?page=1&pagesize=1&version=7910&keyword=$encodedQuery"
-
-                // 执行搜索请求
-                val searchResult = getUrlContentWithHeaders(searchUrl, mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                ))
-
-                val searchJson = JSONObject(searchResult)
-
-                // 检查是否有结果
-                if (!searchJson.has("data") || searchJson.isNull("data") ||
-                    !searchJson.getJSONObject("data").has("info") ||
-                    searchJson.getJSONObject("data").isNull("info") ||
-                    searchJson.getJSONObject("data").getJSONArray("info").length() == 0) {
-                    return null
+    }
+    
+    private fun updateCursor(point: Point) {
+        val cursorType = getCursorType(point)
+        frame.cursor = if (cursorType != Cursor.DEFAULT_CURSOR) {
+            Cursor.getPredefinedCursor(cursorType)
+        } else {
+            Cursor.getDefaultCursor()
+        }
+    }
+    
+    private fun createTopControlBar(): JPanel {
+        return JPanel(BorderLayout()).apply {
+            background = Color(30, 30, 30, 200)
+            isOpaque = true
+            border = BorderFactory.createEmptyBorder(2, 10, 2, 10)
+            preferredSize = Dimension(frame.width, 30)
+            
+            // 左侧歌曲信息
+            val infoPanel = JPanel(BorderLayout()).apply {
+                background = Color(0, 0, 0, 0)
+                preferredSize = Dimension((frame.width * 0.25).toInt(), 30) // 固定为控制栏宽度的1/4
+            }
+            
+            // 自定义标签实现滚动效果
+            titleArtistLabel = object : JLabel() {
+                override fun paintComponent(g: Graphics) {
+                    val g2 = g as Graphics2D
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+                    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+                    
+                    // 设置字体和颜色
+                    g2.font = Font("微软雅黑", Font.PLAIN, 12)
+                    g2.color = Color.WHITE
+                    
+                    // 获取文本宽度
+                    val fm = g2.fontMetrics
+                    val textWidth = fm.stringWidth(text)
+                    
+                    // 如果文本宽度超过面板宽度，启用滚动效果
+                    if (textWidth > width) {
+                        // 计算滚动位置
+                        val scrollX = -scrollOffset
+                        
+                        // 绘制文本
+                        g2.drawString(text, scrollX, fm.ascent + (height - fm.height) / 2)
+                        
+                        // 绘制文本的副本以实现循环滚动
+                        g2.drawString(text, scrollX + textWidth + 20, fm.ascent + (height - fm.height) / 2)
+                    } else {
+                        // 文本宽度足够，居中显示
+                        g2.drawString(text, (width - textWidth) / 2, fm.ascent + (height - fm.height) / 2)
+                    }
                 }
-
-                // 获取歌曲列表
-                val songList = searchJson.getJSONObject("data").getJSONArray("info")
-
-                if (songList.length() > 0) {
-                    // 获取第一首歌曲的hash字段
-                    val songInfo = songList.getJSONObject(0)
-                    if (songInfo.has("hash") && !songInfo.isNull("hash")) {
-                        val hash = songInfo.getString("hash")
-
-                        // 使用hash获取歌词信息
-                        val lyricInfo = getLyricInfoFromHash(hash)
-                        if (lyricInfo != null) {
-                            val id = lyricInfo.first
-                            val accesskey = lyricInfo.second
-
-                            // 使用id和accesskey下载歌词
-                            return getLyricFromKugouWithIdAndKey(id, accesskey)
+            }.apply {
+                foreground = Color.WHITE
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                horizontalAlignment = SwingConstants.LEFT
+            }
+            
+            infoPanel.add(titleArtistLabel, BorderLayout.CENTER)
+            
+            // 中间控制按钮
+            val controlPanel = JPanel(FlowLayout(FlowLayout.CENTER, 5, 0)).apply {
+                background = Color(0, 0, 0, 0)
+                isOpaque = false
+                
+                // 添加上一曲按钮
+                val prevButton = createControlButton("◀").apply {
+                    addActionListener { sendMediaCommand("/api/previous-track") }
+                }
+                
+                // 添加播放/暂停按钮
+                playPauseButton = createControlButton("▶").apply {
+                    addActionListener { sendMediaCommand("/api/play-pause") }
+                }
+                
+                // 添加下一曲按钮
+                val nextButton = createControlButton("▶").apply {
+                    addActionListener { sendMediaCommand("/api/next-track") }
+                }
+                
+                add(prevButton)
+                add(playPauseButton)
+                add(nextButton)
+            }
+            
+            // 右侧功能按钮
+            val rightPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 5, 0)).apply {
+                background = Color(0, 0, 0, 0)
+                isOpaque = false
+                
+                // 锁定按钮
+                lockButton = createControlButton("🔒").apply {
+                    addActionListener { toggleLock() }
+                }
+                
+                // 设置按钮
+                settingsButton = createControlButton("⚙").apply {
+                    addActionListener { showSettingsDialog() }
+                }
+                
+                // 修复最小化按钮 - 使用更直接的方法
+                minimizeButton = createControlButton("−").apply {
+                    addActionListener {
+                        // 直接设置窗口为不可见
+                        frame.isVisible = false
+                        // 显示托盘消息
+                        try {
+                            if (SystemTray.isSupported()) {
+                                val tray = SystemTray.getSystemTray()
+                                val trayIcons = tray.trayIcons
+                                if (trayIcons.isNotEmpty()) {
+                                    trayIcons[0].displayMessage(
+                                        "Salt Player 桌面歌词",
+                                        "歌词窗口已隐藏，点击托盘图标可重新显示",
+                                        TrayIcon.MessageType.INFO
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("显示托盘消息失败: ${e.message}")
                         }
+                        // 确保窗口不会因为其他事件而重新显示
+                        // 添加一个临时标志来防止自动显示
+                        isManuallyHidden = true
+                        // 设置一个定时器，在短暂时间后重置标志
+                        Timer(1000) { isManuallyHidden = false }.start()
                     }
                 }
-            } catch (e: Exception) {
-                println("从酷狗音乐API获取歌词失败: ${e.message}")
-                e.printStackTrace()
+                
+                add(lockButton)
+                add(settingsButton)
+                add(minimizeButton)
             }
-
-            return null
-        }
-
-        // 通过hash获取歌词信息（id和accesskey）
-        private fun getLyricInfoFromHash(hash: String): Pair<String, String>? {
-            try {
-                val lyricInfoUrl = "http://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword=%20-%20&duration=139039&hash=$hash"
-
-                // 获取歌词信息
-                val lyricInfoResult = getUrlContentWithHeaders(lyricInfoUrl, mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                ))
-
-                val lyricInfoJson = JSONObject(lyricInfoResult)
-
-                // 检查是否有结果
-                if (lyricInfoJson.has("candidates") && !lyricInfoJson.isNull("candidates") &&
-                    lyricInfoJson.getJSONArray("candidates").length() > 0) {
-
-                    val candidate = lyricInfoJson.getJSONArray("candidates").getJSONObject(0)
-                    if (candidate.has("id") && !candidate.isNull("id") &&
-                        candidate.has("accesskey") && !candidate.isNull("accesskey")) {
-
-                        val id = candidate.getString("id")
-                        val accesskey = candidate.getString("accesskey")
-                        return Pair(id, accesskey)
-                    }
+            
+            add(infoPanel, BorderLayout.WEST)
+            add(controlPanel, BorderLayout.CENTER)
+            add(rightPanel, BorderLayout.EAST)
+            
+            addComponentListener(object : ComponentAdapter() {
+                override fun componentResized(e: ComponentEvent) {
+                    infoPanel.preferredSize = Dimension((width * 0.25).toInt(), 30)
+                    revalidate()
+                    repaint()
+                    updateTitleArtistDisplay(currentTitle, currentArtist)
                 }
-            } catch (e: Exception) {
-                println("获取歌词信息失败: ${e.message}")
-                e.printStackTrace()
-            }
-
-            return null
-        }
-
-        // 使用id和accesskey获取歌词
-        private fun getLyricFromKugouWithIdAndKey(id: String, accesskey: String): String? {
-            try {
-                val lyricUrl = "http://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&charset=utf8&id=$id&accesskey=$accesskey"
-
-                // 获取歌词
-                val lyricResult = getUrlContentWithHeaders(lyricUrl, mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                ))
-
-                val lyricJson = JSONObject(lyricResult)
-
-                // 检查是否有歌词内容
-                if (lyricJson.has("content") && !lyricJson.isNull("content")) {
-                    val base64Content = lyricJson.getString("content")
-
-                    // 解码base64歌词
-                    return String(Base64.getDecoder().decode(base64Content), Charsets.UTF_8)
-                }
-            } catch (e: Exception) {
-                println("获取歌词内容失败: ${e.message}")
-                e.printStackTrace()
-            }
-
-            return null
-        }
-
-        // 辅助方法：获取URL内容（带请求头）
-        private fun getUrlContentWithHeaders(urlString: String, headers: Map<String, String>): String {
-            val url = URL(urlString)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
-
-            // 添加请求头
-            headers.forEach { (key, value) ->
-                conn.setRequestProperty(key, value)
-            }
-
-            return conn.inputStream.bufferedReader().use { it.readText() }
+            })
         }
     }
-
-    /**
-     * 封面图片API
-     */
-    class PicServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            val coverUrl = PlaybackStateHolder.coverUrl
-            if (coverUrl == null) {
-                resp.status = HttpServletResponse.SC_NOT_FOUND
-                resp.writer.write("封面地址未找到")
-                return
+    
+    private fun createControlButton(text: String): JButton {
+        return JButton(text).apply {
+            font = Font("Segoe UI Symbol", Font.BOLD, 12)
+            foreground = Color.WHITE
+            background = Color(60, 60, 60, 200)
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color(150, 150, 150, 150), 1),
+                BorderFactory.createEmptyBorder(3, 8, 3, 8)
+            )
+            isContentAreaFilled = true
+            isFocusPainted = false
+            
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseEntered(e: MouseEvent) {
+                    background = Color(80, 80, 80, 220)
+                }
+                
+                override fun mouseExited(e: MouseEvent) {
+                    background = Color(60, 60, 60, 200)
+                }
+            })
+        }
+    }
+    
+    private fun toggleLock() {
+        isLocked = !isLocked
+        if (isLocked) {
+            lockButton.text = "🔒"
+            topPanel.isVisible = false
+            scrollTimer?.stop()
+            disableAcrylicEffect()
+        } else {
+            lockButton.text = "🔓"
+            // 解锁后，如果鼠标在窗口内，启用毛玻璃效果
+            if (frame.mousePosition != null) {
+                enableAcrylicEffect(200)
             }
-
+            // 如果文本需要滚动，重新启动滚动计时器
+            if (scrollText.isNotEmpty()) {
+                startScrollTimer()
+            }
+        }
+        saveConfig()
+    }
+    
+    private fun updateTitleArtistDisplay(title: String, artist: String) {
+        currentTitle = title
+        currentArtist = artist
+        val displayText = if (titleArtistFormat == 0) {
+            "$title - $artist"
+        } else {
+            "$artist - $title"
+        }
+        
+        titleArtistLabel.text = displayText
+        
+        // 检查文本是否需要滚动
+        val fm = titleArtistLabel.getFontMetrics(titleArtistLabel.font)
+        val textWidth = fm.stringWidth(displayText)
+        val panelWidth = (topPanel.width * 0.25).toInt()
+        
+        // 停止之前的滚动计时器
+        scrollTimer?.stop()
+        
+        if (textWidth > panelWidth) {
+            // 文本需要滚动
+            scrollText = displayText
+            scrollOffset = 0
+            scrollDirection = 1
+            startScrollTimer()
+        } else {
+            scrollText = ""
+        }
+    }
+    
+    private fun startScrollTimer() {
+        scrollTimer?.stop()
+        scrollTimer = Timer(20) {
+            val fm = titleArtistLabel.getFontMetrics(titleArtistLabel.font)
+            val textWidth = fm.stringWidth(scrollText)
+            val panelWidth = (topPanel.width * 0.25).toInt()
+            
+            if (textWidth > panelWidth) {
+                scrollOffset += 1
+                if (scrollOffset > textWidth + 20) {
+                    scrollOffset = -panelWidth
+                }
+                titleArtistLabel.repaint()
+            } else {
+                scrollTimer?.stop()
+            }
+        }
+        scrollTimer?.start()
+    }
+    
+    private fun setupKeyboardShortcuts() {
+        val inputMap = frame.rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+        val actionMap = frame.rootPane.actionMap
+        
+        // 空格键 - 播放/暂停
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "playPause")
+        actionMap.put("playPause", object : AbstractAction() {
+            override fun actionPerformed(e: ActionEvent) {
+                sendMediaCommand("/api/play-pause")
+            }
+        })
+        
+        // 右箭头 - 下一曲
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "nextTrack")
+        actionMap.put("nextTrack", object : AbstractAction() {
+            override fun actionPerformed(e: ActionEvent) {
+                sendMediaCommand("/api/next-track")
+            }
+        })
+        
+        // 左箭头 - 上一曲
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), "previousTrack")
+        actionMap.put("previousTrack", object : AbstractAction() {
+            override fun actionPerformed(e: ActionEvent) {
+                sendMediaCommand("/api/previous-track")
+            }
+        })
+    }
+    
+    private fun sendMediaCommand(endpoint: String) {
+        Thread {
             try {
-                // 获取图片内容
-                val url = URL(coverUrl)
+                val url = URL("http://localhost:35373$endpoint")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
-                conn.connectTimeout = 5000
-                conn.readTimeout = 5000
-
-                // 设置正确的Content-Type
-                val contentType = conn.contentType ?: "image/jpeg"
-                resp.contentType = contentType
-
-                // 将图片数据写入响应
-                conn.inputStream.copyTo(resp.outputStream)
+                conn.connectTimeout = 1000
+                conn.responseCode // 触发请求
             } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
-                resp.writer.write("获取封面失败: ${e.message}")
+                println("发送媒体命令失败: ${e.message}")
+            }
+        }.start()
+    }
+    
+    private fun setupSystemTray() {
+        if (!SystemTray.isSupported()) return
+        
+        val tray = SystemTray.getSystemTray()
+        val image = createTrayIconImage()
+        val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
+        
+        // 创建一个透明的JWindow作为菜单容器
+        val menuWindow = JWindow().apply {
+            isAlwaysOnTop = true
+            background = Color(0, 0, 0, 0)
+            focusableWindowState = false
+        }
+        
+        // 创建菜单面板
+        val menuPanel = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            background = Color(60, 60, 60, 230)
+            border = BorderFactory.createEmptyBorder(5, 5, 5, 5)
+        }
+        
+        // 添加显示/隐藏菜单项
+        val toggleItem = createMenuItem("显示/隐藏") {
+            frame.isVisible = !frame.isVisible
+            menuWindow.isVisible = false
+            if (frame.isVisible) {
+                frame.toFront()
+                // 如果解锁状态，显示控制面板
+                if (!isLocked && frame.mousePosition != null) {
+                    topPanel.isVisible = true
+                }
             }
         }
-    }
-
-    /**
-     * 当前播放位置API
-     */
-    class CurrentPositionServlet : HttpServlet() {
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
-
-            val position = PlaybackStateHolder.currentPosition
-            val formatted = formatPosition(position)
-
-            val response = mapOf(
-                "status" to "success",
-                "position" to position,
-                "formatted" to formatted
-            )
-
-            resp.writer.write(Gson().toJson(response))
+        menuPanel.add(toggleItem)
+        
+        // 添加锁定/解锁菜单项
+        val lockItem = createMenuItem(if (isLocked) "解锁" else "锁定") {
+            toggleLock()
+            menuWindow.isVisible = false
         }
-
-        // 格式化位置为分钟:秒:毫秒
-        private fun formatPosition(position: Long): String {
-            val totalSeconds = position / 1000
-            val minutes = totalSeconds / 60
-            val seconds = totalSeconds % 60
-            val millis = position % 1000
-
-            return String.format("%02d:%02d:%03d", minutes, seconds, millis)
+        menuPanel.add(lockItem)
+        
+        // 添加设置菜单项
+        val settingsItem = createMenuItem("设置") {
+            showSettingsDialog()
+            menuWindow.isVisible = false
         }
-    }
-
-    /**
-     * 发送系统媒体键事件
-     */
-    fun sendMediaKeyEvent(virtualKeyCode: Int) {
+        menuPanel.add(settingsItem)
+        
+        // 添加分隔线
+        menuPanel.add(JSeparator().apply {
+            foreground = Color(120, 120, 120)
+            maximumSize = Dimension(Int.MAX_VALUE, 1)
+        })
+        
+        // 添加退出菜单项
+        val exitItem = createMenuItem("退出") {
+            exitApplication()
+            menuWindow.isVisible = false
+        }
+        menuPanel.add(exitItem)
+        
+        // 设置菜单窗口内容
+        menuWindow.contentPane = menuPanel
+        menuWindow.pack()
+        
+        // 添加全局鼠标监听器
+        val globalMouseListener = object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent) {
+                if (menuWindow.isVisible) {
+                    val mousePoint = e.locationOnScreen
+                    val menuBounds = Rectangle(menuWindow.location, menuWindow.size)
+                    if (!menuBounds.contains(mousePoint)) {
+                        menuWindow.isVisible = false
+                    }
+                }
+            }
+        }
+        
+        // 添加键盘监听器（ESC键关闭菜单）
+        val globalKeyListener = object : KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                if (e.keyCode == KeyEvent.VK_ESCAPE && menuWindow.isVisible) {
+                    menuWindow.isVisible = false
+                }
+            }
+        }
+        
+        // 为所有窗口添加监听器
+        fun addGlobalListeners() {
+            Window.getWindows().forEach { window ->
+                if (window.isVisible) {
+                    window.addMouseListener(globalMouseListener)
+                    window.addKeyListener(globalKeyListener)
+                }
+            }
+        }
+        
+        // 移除全局监听器
+        fun removeGlobalListeners() {
+            Window.getWindows().forEach { window ->
+                window.removeMouseListener(globalMouseListener)
+                window.removeKeyListener(globalKeyListener)
+            }
+        }
+        
+        // 添加鼠标监听器以显示菜单
+        trayIcon.addMouseListener(object : MouseAdapter() {
+            override fun mouseReleased(e: MouseEvent) {
+                if (e.isPopupTrigger) {
+                    // 更新锁定/解锁菜单项文本
+                    (lockItem as JButton).text = if (isLocked) "解锁" else "锁定"
+                    
+                    // 获取鼠标位置
+                    val mousePos = MouseInfo.getPointerInfo().location
+                    
+                    // 设置菜单窗口位置
+                    menuWindow.setLocation(
+                        mousePos.x - menuWindow.width / 2,
+                        mousePos.y - menuWindow.height
+                    )
+                    
+                    // 显示菜单并添加全局监听器
+                    menuWindow.isVisible = true
+                    addGlobalListeners()
+                }
+            }
+        })
+        
+        // 添加菜单窗口监听器
+        menuWindow.addWindowListener(object : WindowAdapter() {
+            override fun windowDeactivated(e: WindowEvent) {
+                // 窗口失去焦点时隐藏
+                menuWindow.isVisible = false
+                removeGlobalListeners()
+            }
+            
+            override fun windowClosed(e: WindowEvent) {
+                // 确保移除全局监听器
+                removeGlobalListeners()
+            }
+        })
+        
+        // 添加左键点击显示/隐藏功能
+        trayIcon.addActionListener {
+            frame.isVisible = !frame.isVisible
+            if (frame.isVisible) {
+                frame.toFront()
+                // 如果解锁状态，显示控制面板
+                if (!isLocked && frame.mousePosition != null) {
+                    topPanel.isVisible = true
+                }
+            }
+        }
+        
         try {
-            val user32 = User32Ex.INSTANCE
-            user32.keybd_event(virtualKeyCode.toByte(), 0, 0, 0)
-            Thread.sleep(10)
-            user32.keybd_event(virtualKeyCode.toByte(), 0, 2, 0)
-        } catch (e: Exception) {
-            println("发送媒体键事件失败: ${e.message}")
+            tray.add(trayIcon)
+        } catch (e: AWTException) {
+            println("无法添加系统托盘图标: ${e.message}")
+        }
+        
+        // 添加应用程序关闭时的清理代码
+        frame.addWindowListener(object : WindowAdapter() {
+            override fun windowClosed(e: WindowEvent) {
+                // 确保移除全局监听器
+                removeGlobalListeners()
+                menuWindow.dispose()
+            }
+        })
+    }
+    
+    // 创建菜单项辅助函数
+    private fun createMenuItem(text: String, action: () -> Unit): JButton {
+        return JButton(text).apply {
+            font = Font("微软雅黑", Font.PLAIN, 12)
+            foreground = Color.WHITE
+            background = Color(0, 0, 0, 0)
+            border = BorderFactory.createEmptyBorder(5, 10, 5, 10)
+            horizontalAlignment = SwingConstants.LEFT
+            isContentAreaFilled = false
+            isFocusPainted = false
+            addActionListener { action() }
+            
+            // 添加鼠标悬停效果
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseEntered(e: MouseEvent) {
+                    background = Color(80, 80, 80, 200)
+                    isContentAreaFilled = true
+                }
+                
+                override fun mouseExited(e: MouseEvent) {
+                    background = Color(0, 0, 0, 0)
+                    isContentAreaFilled = false
+                }
+            })
         }
     }
-
-    // JNA接口
-    interface User32Ex : com.sun.jna.Library {
-        fun keybd_event(bVk: Byte, bScan: Byte, dwFlags: Int, dwExtraInfo: Int)
-
-        companion object {
-            val INSTANCE: User32Ex by lazy {
-                Native.load("user32", User32Ex::class.java) as User32Ex
+    
+    private fun updateLyrics() {
+        try {
+            // 如果窗口被手动隐藏，则不更新内容
+            if (isManuallyHidden) {
+                return
             }
+            
+            // 获取当前播放信息
+            val nowPlaying = getNowPlaying()
+            if (nowPlaying == null) {
+                frame.isVisible = false
+                return
+            }
+            
+            // 更新播放/暂停按钮图标
+            playPauseButton.text = if (nowPlaying.isPlaying) "❚❚" else "▶"
+            
+            // 更新标题-艺术家显示
+            updateTitleArtistDisplay(nowPlaying.title ?: "", nowPlaying.artist ?: "")
+            
+            // 检查歌曲是否变化
+            val newSongId = "${nowPlaying.title}-${nowPlaying.artist}-${nowPlaying.album}"
+            val songChanged = newSongId != currentSongId
+            
+            if (songChanged) {
+                currentSongId = newSongId
+                // 重置歌词状态
+                lyricsPanel.resetLyrics()
+                lastLyricUrl = ""
+            }
+            
+            // 获取歌词内容（仅在需要时）
+            val lyricContent = if (songChanged || lyricsPanel.parsedLyrics.isEmpty()) {
+                getLyric()
+            } else {
+                null
+            }
+            
+            // 更新歌词面板
+            lyricsPanel.updateContent(
+                title = nowPlaying.title ?: "无歌曲播放",
+                artist = nowPlaying.artist ?: "",
+                position = nowPlaying.position,
+                lyric = lyricContent
+            )
+            
+            // 只有当有歌曲播放时才显示窗口
+            frame.isVisible = true
+        } catch (e: Exception) {
+            // 连接失败时隐藏窗口
+            frame.isVisible = false
+        }
+    }
+    
+    private fun getNowPlaying(): NowPlaying? {
+        try {
+            val url = URL("http://localhost:35373/api/now-playing")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 1000
+            
+            if (conn.responseCode != 200) return null
+            
+            val reader = BufferedReader(InputStreamReader(conn.inputStream))
+            val response = reader.readText()
+            reader.close()
+            
+            return gson.fromJson(response, NowPlaying::class.java)
+        } catch (e: Exception) {
+            return null
+        }
+    }
+    
+    private fun getLyric(): String? {
+        try {
+            // 检查缓存
+            if (currentSongId.isNotEmpty() && lyricCache.containsKey(currentSongId)) {
+                return lyricCache[currentSongId]
+            }
+            
+            // 按顺序尝试不同的歌词API
+            val endpoints = listOf(
+                "/api/lyric",
+                "/api/lyric163",
+                "/api/lyrickugou",
+                "/api/lyricqq"
+            )
+            
+            for (endpoint in endpoints) {
+                try {
+                    val url = URL("http://localhost:35373$endpoint")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.connectTimeout = 1000
+                    
+                    if (conn.responseCode == 404) {
+                        conn.disconnect()
+                        continue // 尝试下一个端点
+                    }
+                    
+                    if (conn.responseCode != 200) {
+                        conn.disconnect()
+                        continue // 尝试下一个端点
+                    }
+                    
+                    val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                    val response = reader.readText()
+                    reader.close()
+                    
+                    val lyricResponse = gson.fromJson(response, LyricResponse::class.java)
+                    val lyric = lyricResponse.lyric
+                    
+                    // 更新缓存
+                    if (lyric != null && currentSongId.isNotEmpty()) {
+                        lyricCache[currentSongId] = lyric
+                        return lyric
+                    }
+                    
+                    conn.disconnect()
+                } catch (e: Exception) {
+                    // 连接失败，继续尝试下一个端点
+                    continue
+                }
+            }
+            
+            return null // 所有端点都失败
+        } catch (e: Exception) {
+            return null
+        }
+    }
+    
+    private fun exitApplication() {
+        stop()
+    }
+    
+    // 设置对话框显示方法
+    fun showSettingsDialog() {
+        if (!isInitialized) {
+            println("桌面歌词未初始化，无法打开设置")
+            return
+        }
+        
+        // 如果对话框已经存在，先关闭它
+        settingsDialog?.dispose()
+        
+        settingsDialog = JDialog(frame, "桌面歌词设置", true)
+        settingsDialog!!.layout = BorderLayout()
+        settingsDialog!!.setSize(500, 500)
+        settingsDialog!!.setLocationRelativeTo(frame)
+        
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        
+        val tabbedPane = JTabbedPane(JTabbedPane.TOP, JTabbedPane.SCROLL_TAB_LAYOUT).apply {
+            border = EmptyBorder(10, 10, 10, 10)
+            background = Color(240, 240, 240)
+            font = Font("微软雅黑", Font.PLAIN, 12)
+        }
+        
+        // 字体设置面板
+        val fontPanel = createFontPanel(settingsDialog!!)
+        
+        // 颜色设置面板
+        val colorPanel = createColorPanel(settingsDialog!!)
+        
+        // 其他设置面板
+        val otherPanel = createOtherPanel(settingsDialog!!)
+        
+        tabbedPane.addTab("字体", fontPanel)
+        tabbedPane.addTab("颜色", colorPanel)
+        tabbedPane.addTab("其他", otherPanel)
+        
+        settingsDialog!!.add(tabbedPane, BorderLayout.CENTER)
+        
+        // 添加关闭按钮
+        val closeButton = JButton("关闭").apply {
+            font = Font("微软雅黑", Font.BOLD, 12)
+            background = Color(192, 57, 43)
+            foreground = Color.WHITE
+            border = EmptyBorder(8, 20, 8, 20)
+            addActionListener { settingsDialog!!.dispose() }
+        }
+        
+        val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
+            background = Color(240, 240, 240)
+            border = EmptyBorder(10, 10, 10, 10)
+            add(closeButton)
+        }
+        
+        settingsDialog!!.add(buttonPanel, BorderLayout.SOUTH)
+        settingsDialog!!.isVisible = true
+    }
+    
+    private fun createFontPanel(dialog: JDialog): JPanel {
+        return JPanel(GridBagLayout()).apply {
+            border = EmptyBorder(15, 15, 15, 15)
+            background = Color.WHITE
+            
+            val gbc = GridBagConstraints().apply {
+                insets = Insets(8, 8, 8, 8)
+                anchor = GridBagConstraints.WEST
+                fill = GridBagConstraints.HORIZONTAL
+            }
+            
+            // 标题
+            gbc.gridx = 0
+            gbc.gridy = 0
+            gbc.gridwidth = 2
+            add(JLabel("字体设置").apply {
+                font = Font("微软雅黑", Font.BOLD, 16)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridwidth = 1
+            gbc.gridy++
+            
+            // 中文字体选择
+            gbc.gridx = 0
+            add(JLabel("中文字体:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val chineseFontCombo = JComboBox(GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getAvailableFontFamilyNames()).apply {
+                selectedItem = chineseFont.family
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
+            }
+            add(chineseFontCombo, gbc)
+            
+            // 日文字体选择
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("日文字体:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val japaneseFontCombo = JComboBox(GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getAvailableFontFamilyNames()).apply {
+                selectedItem = japaneseFont.family
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
+            }
+            add(japaneseFontCombo, gbc)
+            
+            // 英文字体选择
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("英文字体:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val englishFontCombo = JComboBox(GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getAvailableFontFamilyNames()).apply {
+                selectedItem = englishFont.family
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
+            }
+            add(englishFontCombo, gbc)
+            
+            // 字体大小
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("字体大小:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val sizeSpinner = JSpinner(SpinnerNumberModel(chineseFont.size, 8, 48, 1)).apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+            }
+            add(sizeSpinner, gbc)
+            
+            // 字体样式
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("字体样式:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val styleCombo = JComboBox(arrayOf("普通", "粗体", "斜体")).apply {
+                selectedIndex = when (chineseFont.style) {
+                    Font.BOLD -> 1
+                    Font.ITALIC -> 2
+                    else -> 0
+                }
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
+            }
+            add(styleCombo, gbc)
+            
+            // 应用按钮
+            gbc.gridx = 0
+            gbc.gridy++
+            gbc.gridwidth = 2
+            gbc.anchor = GridBagConstraints.CENTER
+            val applyButton = JButton("应用字体设置").apply {
+                font = Font("微软雅黑", Font.BOLD, 12)
+                background = Color(70, 130, 180)
+                foreground = Color.WHITE
+                border = EmptyBorder(8, 20, 8, 20)
+                addActionListener {
+                    val chineseFontName = chineseFontCombo.selectedItem as String
+                    val japaneseFontName = japaneseFontCombo.selectedItem as String
+                    val englishFontName = englishFontCombo.selectedItem as String
+                    val fontSize = sizeSpinner.value as Int
+                    val fontStyle = when (styleCombo.selectedIndex) {
+                        1 -> Font.BOLD
+                        2 -> Font.ITALIC
+                        else -> Font.PLAIN
+                    }
+                    
+                    chineseFont = Font(chineseFontName, fontStyle, fontSize)
+                    japaneseFont = Font(japaneseFontName, fontStyle, fontSize)
+                    englishFont = Font(englishFontName, fontStyle, fontSize)
+                    lyricsPanel.setFonts(chineseFont, japaneseFont, englishFont)
+                    
+                    // 保存配置
+                    if (::configHelper.isInitialized) {
+                        configHelper.set("chineseFontName", chineseFontName)
+                        configHelper.set("japaneseFontName", japaneseFontName)
+                        configHelper.set("englishFontName", englishFontName)
+                        configHelper.set("fontSize", fontSize)
+                        configHelper.set("fontStyle", fontStyle)
+                        configHelper.save()
+                    }
+                    
+                    JOptionPane.showMessageDialog(dialog, "字体设置已应用", "提示", JOptionPane.INFORMATION_MESSAGE)
+                }
+            }
+            add(applyButton, gbc)
+        }
+    }
+    
+    private fun createColorPanel(dialog: JDialog): JPanel {
+        return JPanel(GridBagLayout()).apply {
+            border = EmptyBorder(15, 15, 15, 15)
+            background = Color.WHITE
+            
+            val gbc = GridBagConstraints().apply {
+                insets = Insets(8, 8, 8, 8)
+                anchor = GridBagConstraints.WEST
+                fill = GridBagConstraints.HORIZONTAL
+            }
+            
+            // 标题
+            gbc.gridx = 0
+            gbc.gridy = 0
+            gbc.gridwidth = 2
+            add(JLabel("颜色设置").apply {
+                font = Font("微软雅黑", Font.BOLD, 16)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridwidth = 1
+            gbc.gridy++
+            
+            // 歌词颜色
+            gbc.gridx = 0
+            add(JLabel("歌词颜色:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val lyricColorButton = JButton().apply {
+                background = lyricsPanel.lyricColor
+                preferredSize = Dimension(80, 25)
+                addActionListener {
+                    val color = JColorChooser.showDialog(dialog, "选择歌词颜色", background)
+                    if (color != null) {
+                        background = color
+                        lyricsPanel.lyricColor = color
+                        
+                        // 保存配置
+                        if (::configHelper.isInitialized) {
+                            configHelper.set("lyricColor", color.rgb)
+                            configHelper.save()
+                        }
+                    }
+                }
+            }
+            add(lyricColorButton, gbc)
+            
+            // 高亮歌词颜色
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("高亮歌词颜色:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val highlightColorButton = JButton().apply {
+                background = lyricsPanel.highlightColor
+                preferredSize = Dimension(80, 25)
+                addActionListener {
+                    val color = JColorChooser.showDialog(dialog, "选择高亮歌词颜色", background)
+                    if (color != null) {
+                        background = color
+                        lyricsPanel.highlightColor = color
+                        
+                        // 保存配置
+                        if (::configHelper.isInitialized) {
+                            configHelper.set("highlightColor", color.rgb)
+                            configHelper.save()
+                        }
+                    }
+                }
+            }
+            add(highlightColorButton, gbc)
+            
+            // 背景颜色
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("背景颜色:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val bgColorButton = JButton().apply {
+                background = lyricsPanel.backgroundColor
+                preferredSize = Dimension(80, 25)
+                addActionListener {
+                    val color = JColorChooser.showDialog(dialog, "选择背景颜色", background)
+                    if (color != null) {
+                        background = color
+                        lyricsPanel.backgroundColor = color
+                        lyricsPanel.background = Color(
+                            color.red, color.green, color.blue,
+                            (255 * lyricsPanel.transparency).roundToInt()
+                        )
+                        
+                        // 保存配置
+                        if (::configHelper.isInitialized) {
+                            configHelper.set("backgroundColor", color.rgb)
+                            configHelper.save()
+                        }
+                    }
+                }
+            }
+            add(bgColorButton, gbc)
+        }
+    }
+    
+    private fun createOtherPanel(dialog: JDialog): JPanel {
+        return JPanel(GridBagLayout()).apply {
+            border = EmptyBorder(15, 15, 15, 15)
+            background = Color.WHITE
+            
+            val gbc = GridBagConstraints().apply {
+                insets = Insets(8, 8, 8, 8)
+                anchor = GridBagConstraints.WEST
+                fill = GridBagConstraints.HORIZONTAL
+            }
+            
+            // 标题
+            gbc.gridx = 0
+            gbc.gridy = 0
+            gbc.gridwidth = 2
+            add(JLabel("其他设置").apply {
+                font = Font("微软雅黑", Font.BOLD, 16)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridwidth = 1
+            gbc.gridy++
+            
+            // 透明度设置
+            gbc.gridx = 0
+            add(JLabel("窗口透明度:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val transparencySlider = JSlider(10, 100, (lyricsPanel.transparency * 100).toInt()).apply {
+                addChangeListener {
+                    lyricsPanel.transparency = value / 100f
+                    val bg = lyricsPanel.backgroundColor
+                    lyricsPanel.background = Color(bg.red, bg.green, bg.blue, (255 * lyricsPanel.transparency).roundToInt())
+                    lyricsPanel.repaint()
+                    
+                    // 保存配置
+                    if (::configHelper.isInitialized) {
+                        configHelper.set("transparency", lyricsPanel.transparency.toString())
+                        configHelper.save()
+                    }
+                }
+            }
+            add(transparencySlider, gbc)
+            
+            // 动画速度设置
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("动画速度:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val animationSlider = JSlider(1, 20, lyricsPanel.animationSpeed).apply {
+                addChangeListener {
+                    lyricsPanel.animationSpeed = value
+                    
+                    // 保存配置
+                    if (::configHelper.isInitialized) {
+                        configHelper.set("animationSpeed", value)
+                        configHelper.save()
+                    }
+                }
+            }
+            add(animationSlider, gbc)
+            
+            // 歌词对齐方式
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("歌词对齐:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val alignmentCombo = JComboBox(arrayOf("居中", "左对齐", "右对齐")).apply {
+                selectedIndex = when (lyricsPanel.alignment) {
+                    LyricsPanel.Alignment.LEFT -> 1
+                    LyricsPanel.Alignment.RIGHT -> 2
+                    else -> 0
+                }
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
+                addActionListener {
+                    lyricsPanel.alignment = when (selectedIndex) {
+                        1 -> LyricsPanel.Alignment.LEFT
+                        2 -> LyricsPanel.Alignment.RIGHT
+                        else -> LyricsPanel.Alignment.CENTER
+                    }
+                    
+                    // 保存配置
+                    if (::configHelper.isInitialized) {
+                        configHelper.set("alignment", selectedIndex)
+                        configHelper.save()
+                    }
+                }
+            }
+            add(alignmentCombo, gbc)
+            
+            // 标题-艺术家显示格式
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("标题-艺术家格式:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val formatCombo = JComboBox(arrayOf("歌名 - 歌手", "歌手 - 歌名")).apply {
+                selectedIndex = titleArtistFormat
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                background = Color.WHITE
+                renderer = DefaultListCellRenderer().apply {
+                    font = Font("微软雅黑", Font.PLAIN, 12)
+                }
+                addActionListener {
+                    titleArtistFormat = selectedIndex
+                    val nowPlaying = getNowPlaying()
+                    if (nowPlaying != null) {
+                        updateTitleArtistDisplay(nowPlaying.title ?: "", nowPlaying.artist ?: "")
+                    }
+                    
+                    // 保存配置
+                    if (::configHelper.isInitialized) {
+                        configHelper.set("titleArtistFormat", selectedIndex)
+                        configHelper.save()
+                    }
+                }
+            }
+            add(formatCombo, gbc)
+            
+            // 文本阴影效果
+            gbc.gridx = 0
+            gbc.gridy++
+            add(JLabel("文字阴影效果:").apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                foreground = Color(60, 60, 60)
+            }, gbc)
+            
+            gbc.gridx = 1
+            val shadowCheckBox = JCheckBox("启用", lyricsPanel.useShadow).apply {
+                font = Font("微软雅黑", Font.PLAIN, 12)
+                addActionListener {
+                    lyricsPanel.useShadow = isSelected
+                    lyricsPanel.repaint()
+                    
+                    // 保存配置
+                    if (::configHelper.isInitialized) {
+                        configHelper.set("useShadow", isSelected)
+                        configHelper.save()
+                    }
+                }
+            }
+            add(shadowCheckBox, gbc)
+        }
+    }
+    
+    private fun createTrayIconImage(): Image {
+        val image = BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB)
+        val g = image.createGraphics()
+        g.color = Color.WHITE
+        g.fillOval(0, 0, 16, 16)
+        g.color = Color.BLACK
+        g.drawString("L", 4, 12)
+        g.dispose()
+        return image
+    }
+    
+    data class NowPlaying(
+        val status: String,
+        val title: String?,
+        val artist: String?,
+        val album: String?,
+        val isPlaying: Boolean,
+        val position: Long,
+        val volume: Int,
+        val timestamp: Long
+    )
+    
+    data class LyricResponse(
+        val status: String,
+        val lyric: String?
+    )
+}
+
+class LyricsPanel : JPanel() {
+    private var title = ""
+    private var artist = ""
+    private var position = 0L
+    private var lyric = ""
+    var parsedLyrics = listOf<LyricLine>()
+    private var currentLineIndex = -1
+    var transparency = 0.8f
+    var animationSpeed = 10
+    var alignment = Alignment.CENTER
+    var useShadow = true // 是否使用文字阴影
+    // 滚动相关变量
+    private var scrollOffset = 0
+    private var scrollTimer: Timer? = null
+    private var currentLineScrollText = ""
+    private var currentLineNeedsScroll = false
+    private var hasTranslation = false
+    // 字体设置
+    private var chineseFont = Font("微软雅黑", Font.BOLD, 24)
+    private var japaneseFont = Font("MS Gothic", Font.BOLD, 24)
+    private var englishFont = Font("Arial", Font.BOLD, 24)
+    // 颜色设置
+    var lyricColor = Color.WHITE
+    var highlightColor = Color(255, 215, 0) // 金色
+    var backgroundColor = Color(0, 0, 0, 180) // 背景颜色
+    // 动画状态
+    private var animationProgress = 0f
+    private var animationDirection = 1
+    private var nextLineIndex = -1
+    // 平滑动画相关
+    private var smoothPosition = 0f
+    private var targetPosition = 0f
+    private var smoothAlpha = 0f
+    private var targetAlpha = 0f
+    // 逐字高亮相关
+    private var currentWordIndex = -1
+    private var currentWordProgress = 0f
+    private var wordAnimationTimer: Timer? = null
+    // 新增：普通歌词高亮进度
+    private var normalLyricProgress = 0f
+    enum class Alignment {
+        LEFT, CENTER, RIGHT
+    }
+    init {
+        background = backgroundColor
+        isOpaque = false // 设置为不透明，使背景透明
+        border = BorderFactory.createEmptyBorder(5, 20, 5, 20) // 减少上下间距
+        // 动画定时器 - 使用更平滑的动画
+        Timer(10) {
+            // 平滑过渡动画
+            smoothPosition += (targetPosition - smoothPosition) * 0.2f
+            smoothAlpha += (targetAlpha - smoothAlpha) * 0.2f
+            // 歌词行切换动画
+            animationProgress += 0.02f * animationSpeed * animationDirection
+            if (animationProgress >= 1f) {
+                animationProgress = 1f
+                animationDirection = 0
+            } else if (animationProgress <= 0f) {
+                animationProgress = 0f
+                animationDirection = 0
+            }
+            repaint()
+        }.start()
+        // 逐字高亮动画定时器 - 修复 currentTime 作用域问题
+        wordAnimationTimer = Timer(50) {
+            if (currentLineIndex in parsedLyrics.indices) {
+                val line = parsedLyrics[currentLineIndex]
+                val currentTime = position // 修复：将 currentTime 定义移到 if-else 结构外部
+                if (line.words.isNotEmpty()) {
+                    // 对于逐字歌词，按时间戳点亮
+                    var foundWord = false
+                    // 找到当前应该高亮的字
+                    for (i in line.words.indices) {
+                        val word = line.words[i]
+                        if (currentTime >= word.startTime && currentTime < word.endTime) {
+                            currentWordIndex = i
+                            // 计算当前字的进度
+                            val wordDuration = (word.endTime - word.startTime).toFloat()
+                            if (wordDuration > 0) {
+                                currentWordProgress = ((currentTime - word.startTime) / wordDuration).coerceIn(0f, 1f)
+                            } else {
+                                currentWordProgress = 1f
+                            }
+                            foundWord = true
+                            break
+                        } else if (currentTime >= word.endTime) {
+                            // 这个字已经播放完毕，完全高亮
+                            currentWordIndex = i
+                            currentWordProgress = 1f
+                            foundWord = true
+                        }
+                    }
+                    // 如果当前时间超过最后字的结束时间，保持最后字完全高亮
+                    if (!foundWord && line.words.isNotEmpty() && currentTime >= line.words.last().endTime) {
+                        currentWordIndex = line.words.size - 1
+                        currentWordProgress = 1f
+                    }
+                    repaint()
+                } else {
+                    // 对于普通歌词，计算整行进度
+                    if (currentTime >= line.time && currentTime < line.endTime) {
+                        val lineDuration = (line.endTime - line.time).toFloat()
+                        if (lineDuration > 0) {
+                            normalLyricProgress = ((currentTime - line.time) / lineDuration).coerceIn(0f, 1f)
+                        } else {
+                            normalLyricProgress = 1f
+                        }
+                    } else if (currentTime >= line.endTime) {
+                        normalLyricProgress = 1f
+                    }
+                    repaint()
+                }
+            }
+        }
+        wordAnimationTimer?.start()
+    }
+    fun setFonts(chinese: Font, japanese: Font, english: Font) {
+        chineseFont = chinese
+        japaneseFont = japanese
+        englishFont = english
+        repaint()
+    }
+    private fun getFontForText(text: String): Font {
+        return when {
+            text.contains("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF]".toRegex()) -> {
+                // 包含中文或日文字符
+                if (text.contains("[\\u4E00-\\u9FFF]".toRegex())) chineseFont else japaneseFont
+            }
+            else -> englishFont // 英文或其他
+        }
+    }
+    fun resetLyrics() {
+        parsedLyrics = emptyList()
+        currentLineIndex = -1
+        nextLineIndex = -1
+        lyric = ""
+        smoothPosition = 0f
+        targetPosition = 0f
+        smoothAlpha = 0f
+        targetAlpha = 0f
+        currentWordIndex = -1
+        currentWordProgress = 0f
+        normalLyricProgress = 0f
+    }
+    fun updateContent(title: String, artist: String, position: Long, lyric: String?) {
+        this.title = title
+        this.artist = artist
+        this.position = position
+        // 只有在歌词变化时重新解析
+        if (lyric != null && this.lyric != lyric) {
+            this.lyric = lyric
+            parsedLyrics = parseLyrics(lyric)
+            // 检查是否有翻译歌词
+            hasTranslation = checkForTranslation(parsedLyrics)
+        }
+        // 更新当前歌词行
+        val newIndex = findCurrentLyricLine()
+        // 如果行索引变化，启动动画
+        if (newIndex != currentLineIndex) {
+            nextLineIndex = newIndex
+            currentLineIndex = newIndex
+            animationProgress = 0f
+            animationDirection = 1
+            // 重置逐字高亮
+            currentWordIndex = -1
+            currentWordProgress = 0f
+            normalLyricProgress = 0f
+            // 设置平滑动画目标值
+            targetPosition = newIndex.toFloat()
+            targetAlpha = 1f
+            // 更新滚动文本
+            updateScrollTexts()
+        }
+        repaint()
+    }
+    private fun checkForTranslation(lyrics: List<LyricLine>): Boolean {
+        if (lyrics.size < 2) return false
+        for (i in 0 until lyrics.size - 1) {
+            if (lyrics[i].time == lyrics[i + 1].time) {
+                return true
+            }
+        }
+        return false
+    }
+    private fun updateScrollTexts() {
+        // 停止之前的滚动计时器
+        scrollTimer?.stop()
+        if (currentLineIndex in parsedLyrics.indices) {
+            currentLineScrollText = parsedLyrics[currentLineIndex].text
+            val fm = getFontMetrics(getFontForText(currentLineScrollText))
+            val textWidth = fm.stringWidth(currentLineScrollText)
+            currentLineNeedsScroll = textWidth > width * 0.85
+            // 如果需要滚动，启动计时器
+            if (currentLineNeedsScroll) {
+                startScrollTimer()
+            }
+        } else {
+            currentLineScrollText = ""
+            currentLineNeedsScroll = false
+        }
+    }
+    private fun startScrollTimer() {
+        scrollTimer?.stop()
+        scrollTimer = Timer(20) {
+            var needsRepaint = false
+            if (currentLineNeedsScroll) {
+                scrollOffset += 1
+                val fm = getFontMetrics(getFontForText(currentLineScrollText))
+                val textWidth = fm.stringWidth(currentLineScrollText)
+                // 修复：滚动到文本末尾后停止，而不是无限循环
+                if (scrollOffset > textWidth + 50) {
+                    scrollTimer?.stop()
+                    scrollOffset = 0
+                }
+                needsRepaint = true
+            }
+            if (needsRepaint) {
+                repaint()
+            }
+        }
+        scrollTimer?.start()
+    }
+    fun toggleTransparency() {
+        transparency = if (transparency < 0.5f) 0.8f else 0.3f
+        val bg = backgroundColor
+        background = Color(bg.red, bg.green, bg.blue, (255 * transparency).roundToInt())
+        repaint()
+    }
+    // 逐字歌词解析相关数据结构
+    data class LyricLine(
+        val time: Long, // 行开始时间
+        val endTime: Long, // 行结束时间
+        val text: String, // 完整行文本
+        val words: List<Word> // 逐字时间信息
+    )
+    data class Word(
+        val text: String,
+        val startTime: Long,
+        val endTime: Long
+    )
+    private fun parseLyrics(lyricText: String?): List<LyricLine> {
+        if (lyricText.isNullOrEmpty()) return emptyList()
+        val lines = mutableListOf<LyricLine>()
+        // 行时间戳格式的正则表达式 [mm:ss.xxx]
+        val linePattern = Regex("\\[(\\d+):(\\d+)(?:\\.(\\d{1,3}))?\\]")
+        // 按行分割歌词文本
+        lyricText.split("\n").forEach { line ->
+            var currentLine = line.trim()
+            if (currentLine.isEmpty()) return@forEach
+            // 解析行时间戳
+            val timeMatches = linePattern.findAll(currentLine).toList()
+            if (timeMatches.isEmpty()) {
+                return@forEach
+            }
+            // 处理多个连续时间戳（如 [00:04.797][00:05.016]吉）
+            val timeStamps = timeMatches.map { match ->
+                val (min, sec, millis) = match.destructured
+                val minutes = min.toLong()
+                val seconds = sec.toLong()
+                val milliseconds = millis.toIntOrNull() ?: 0
+                // 修复关键问题：毫秒部分不再乘以10
+                minutes * 60 * 1000 + seconds * 1000 + milliseconds
+            }
+            // 第一个时间戳作为行开始时间
+            val startTime = timeStamps.first()
+            // 移除所有时间戳前缀
+            var textStartIndex = timeMatches.first().range.last + 1
+            var text = currentLine.substring(textStartIndex)
+            // 检查是否包含行内逐字时间戳（在文本中间的时间戳）
+            val hasWordTimestamps = timeMatches.size > 1 || 
+                                  (textStartIndex < currentLine.length && 
+                                   currentLine.substring(textStartIndex).contains(Regex("<\\d+:\\d+(?:\\.\\d{1,3})?>|\\[\\d+:\\d+(?:\\.\\d{1,3})?\\]")))
+            // 处理逐字时间戳（仅当确实存在行内逐字时间戳时）
+            val words = mutableListOf<Word>()
+            if (hasWordTimestamps) {
+                var lastTime = startTime
+                var lastIndex = 0
+                // 支持 <00:05.016> 和 [00:05.016] 格式的逐字时间戳
+                val wordPattern = Regex("""(?:<(\d+):(\d+)(?:\.(\d{1,3}))?>|\[(\d+):(\d+)(?:\.(\d{1,3}))?\])""")
+                val wordMatches = wordPattern.findAll(text).toList()
+                // 处理逐字时间戳
+                for (match in wordMatches) {
+                    val groups = match.groups
+                    val minStr = groups[1]?.value ?: groups[4]?.value ?: "0"
+                    val secStr = groups[2]?.value ?: groups[5]?.value ?: "0"
+                    val millisStr = groups[3]?.value ?: groups[6]?.value ?: "0"
+                    val minutes = minStr.toLong()
+                    val seconds = secStr.toLong()
+                    val milliseconds = millisStr.toIntOrNull() ?: 0
+                    // 修复关键问题：毫秒部分不再乘以10
+                    val wordTime = minutes * 60 * 1000 + seconds * 1000 + milliseconds
+                    // 添加上一个时间点到当前时间点之间的文本
+                    if (match.range.first > lastIndex) {
+                        val wordText = text.substring(lastIndex, match.range.first)
+                        if (wordText.isNotEmpty()) {
+                            words.add(Word(wordText, lastTime, wordTime))
+                        }
+                    }
+                    lastTime = wordTime
+                    lastIndex = match.range.last + 1
+                }
+                // 添加剩余文本
+                if (lastIndex < text.length) {
+                    val remainingText = text.substring(lastIndex)
+                    if (remainingText.isNotEmpty()) {
+                        words.add(Word(remainingText, lastTime, lastTime + 500)) // 假设剩余文本持续500毫秒
+                    }
+                }
+            } else {
+                // 对于普通歌词，创建逐字时间信息
+                if (text.isNotEmpty()) {
+                    // 将文本分割为单个字符
+                    val characters = text.toCharArray().map { it.toString() }
+                    val charCount = characters.size
+                    // 估计每个字符的持续时间（假设整行持续5秒）
+                    val estimatedLineDuration = 5000L
+                    val charDuration = estimatedLineDuration / charCount
+                    // 为每个字符创建时间信息
+                    for (i in characters.indices) {
+                        val charStartTime = startTime + i * charDuration
+                        val charEndTime = startTime + (i + 1) * charDuration
+                        words.add(Word(characters[i], charStartTime, charEndTime))
+                    }
+                }
+            }
+            // 创建歌词行
+            lines.add(LyricLine(
+                time = startTime,
+                endTime = Long.MAX_VALUE, // 临时值，后面会更新
+                text = text,
+                words = words
+            ))
+        }
+        // 排序并确定行结束时间
+        val sortedLines = lines.sortedBy { it.time }.toMutableList()
+        // 设置每行的结束时间为下一行的开始时间
+        for (i in 0 until sortedLines.size - 1) {
+            sortedLines[i] = sortedLines[i].copy(endTime = sortedLines[i + 1].time)
+        }
+        // 最后一行的结束时间设为一个很大的值
+        if (sortedLines.isNotEmpty()) {
+            sortedLines[sortedLines.size - 1] = sortedLines[sortedLines.size - 1].copy(endTime = Long.MAX_VALUE)
+        }
+        return sortedLines
+    }
+    private fun findCurrentLyricLine(): Int {
+        if (parsedLyrics.isEmpty()) return -1
+        // 找到当前时间之前的最后一行歌词
+        for (i in parsedLyrics.indices.reversed()) {
+            if (position >= parsedLyrics[i].time) {
+                return i
+            }
+        }
+        return -1
+    }
+    private fun getTextWidth(g: Graphics2D, text: String): Int {
+        return g.fontMetrics.stringWidth(text)
+    }
+    private fun getTextXPosition(g: Graphics2D, text: String): Int {
+        return when (alignment) {
+            Alignment.LEFT -> 20
+            Alignment.RIGHT -> width - getTextWidth(g, text) - 20
+            else -> (width - getTextWidth(g, text)) / 2 // CENTER
+        }
+    }
+    override fun paintComponent(g: Graphics) {
+        super.paintComponent(g)
+        val g2d = g as Graphics2D
+        // 设置抗锯齿
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+        // 绘制歌词
+        val centerY = height / 2
+        val currentLineY = centerY
+        val nextLineY = centerY + 40
+        if (parsedLyrics.isNotEmpty()) {
+            // 绘制当前行歌词（双行显示）
+            if (currentLineIndex in parsedLyrics.indices) {
+                val line = parsedLyrics[currentLineIndex]
+                val font = getFontForText(line.text)
+                g2d.font = font
+                // 计算当前行的起始X位置
+                var currentX = when (alignment) {
+                    Alignment.LEFT -> 20
+                    Alignment.RIGHT -> width - 20
+                    else -> width / 2
+                }
+                // 绘制当前行的每个字
+                var totalWidth = 0
+                line.words.forEach { word ->
+                    totalWidth += getTextWidth(g2d, word.text)
+                }
+                // 调整起始位置以实现居中
+                if (alignment == Alignment.CENTER) {
+                    currentX -= totalWidth / 2
+                }
+                // 绘制当前行歌词
+                var x = currentX
+                for (i in line.words.indices) {
+                    val word = line.words[i]
+                    val wordWidth = getTextWidth(g2d, word.text)
+                    // 判断是否是当前高亮的字
+                    val isCurrentWord = i == currentWordIndex
+                    // 计算高亮进度（0.0-1.0）
+                    val highlightProgress = if (isCurrentWord) currentWordProgress else {
+                        // 对于已经播放过的字，完全高亮
+                        if (i < currentWordIndex) 1f else 0f
+                    }
+                    // 绘制阴影效果
+                    if (useShadow) {
+                        g2d.color = Color(0, 0, 0, 150)
+                        g2d.drawString(word.text, (x + 1).toInt(), currentLineY + 1)
+                    }
+                    // 绘制普通部分（非高亮）
+                    if (highlightProgress <= 0) {
+                        g2d.color = lyricColor
+                        g2d.drawString(word.text, x.toInt(), currentLineY)
+                    } else {
+                        // 绘制高亮部分（当前字）
+                        // 1. 绘制已高亮部分
+                        val highlightedWidth = (wordWidth * highlightProgress).toInt()
+                        g2d.color = highlightColor
+                        g2d.drawString(word.text, x.toInt(), currentLineY)
+                        // 2. 绘制未高亮部分
+                        if (highlightProgress < 1f) {
+                            g2d.color = lyricColor
+                            g2d.clipRect((x + highlightedWidth).toInt(), 0, wordWidth - highlightedWidth, height)
+                            g2d.drawString(word.text, x.toInt(), currentLineY)
+                            g2d.clip = null
+                        }
+                    }
+                    x += wordWidth
+                }
+                // 对于普通歌词（没有逐字时间戳），使用平滑高亮效果
+                if (line.words.isEmpty()) {
+                    val text = line.text
+                    val textWidth = getTextWidth(g2d, text)
+                    val x = getTextXPosition(g2d, text)
+                    // 绘制阴影效果
+                    if (useShadow) {
+                        g2d.color = Color(0, 0, 0, 150)
+                        g2d.drawString(text, x + 1, currentLineY + 1)
+                    }
+                    // 绘制背景（未高亮部分）
+                    g2d.color = lyricColor
+                    g2d.drawString(text, x, currentLineY)
+                    // 绘制高亮部分
+                    val highlightWidth = (textWidth * normalLyricProgress).toInt()
+                    if (highlightWidth > 0) {
+                        g2d.color = highlightColor
+                        // 使用剪裁绘制高亮部分
+                        val clip = g2d.clip
+                        g2d.clipRect(x, 0, highlightWidth, height)
+                        g2d.drawString(text, x, currentLineY)
+                        g2d.clip = clip
+                    }
+                }
+                // 绘制下一行歌词
+                if (currentLineIndex < parsedLyrics.size - 1) {
+                    val nextLine = parsedLyrics[currentLineIndex + 1]
+                    g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
+                    g2d.font = getFontForText(nextLine.text)
+                    // 计算下一行的起始X位置
+                    var nextX = when (alignment) {
+                        Alignment.LEFT -> 20
+                        Alignment.RIGHT -> width - 20
+                        else -> width / 2
+                    }
+                    // 计算下一行的总宽度
+                    var nextTotalWidth = 0
+                    nextLine.words.forEach { word ->
+                        nextTotalWidth += getTextWidth(g2d, word.text)
+                    }
+                    // 调整起始位置以实现居中
+                    if (alignment == Alignment.CENTER) {
+                        nextX -= nextTotalWidth / 2
+                    }
+                    // 绘制下一行歌词
+                    var nextXPos = nextX
+                    nextLine.words.forEach { word ->
+                        val wordWidth = getTextWidth(g2d, word.text)
+                        // 绘制阴影效果
+                        if (useShadow) {
+                            g2d.color = Color(0, 0, 0, 75)
+                            g2d.drawString(word.text, (nextXPos + 1).toInt(), nextLineY + 1)
+                        }
+                        // 绘制歌词
+                        g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
+                        g2d.drawString(word.text, nextXPos.toInt(), nextLineY)
+                        nextXPos += wordWidth
+                    }
+                }
+            }
+        } else if (lyric.isNotEmpty()) {
+            // 绘制静态歌词（没有逐字时间戳的情况）
+            g2d.color = lyricColor
+            g2d.font = getFontForText(lyric)
+            // 检查是否需要滚动
+            val fm = g2d.fontMetrics
+            val textWidth = fm.stringWidth(lyric)
+            val needsScroll = textWidth > width * 0.85
+            val lyricX = if (needsScroll) {
+                -scrollOffset
+            } else {
+                getTextXPosition(g2d, lyric)
+            }
+            // 使用阴影效果
+            if (useShadow) {
+                g2d.color = Color(0, 0, 0, 150)
+                g2d.drawString(lyric, lyricX + 1, centerY + 1)
+            }
+            g2d.color = lyricColor
+            g2d.drawString(lyric, lyricX, centerY)
+            if (needsScroll) {
+                if (useShadow) {
+                    g2d.color = Color(0, 0, 0, 150)
+                    g2d.drawString(lyric, lyricX + textWidth + 50 + 1, centerY + 1)
+                }
+                g2d.color = lyricColor
+                g2d.drawString(lyric, lyricX + textWidth + 50, centerY)
+                // 启动滚动计时器
+                if (scrollTimer == null || !scrollTimer!!.isRunning) {
+                    currentLineScrollText = lyric
+                    currentLineNeedsScroll = true
+                    scrollOffset = 0
+                    startScrollTimer()
+                }
+            }
+        } else {
+            // 没有歌词时的提示
+            g2d.color = Color.LIGHT_GRAY
+            g2d.font = chineseFont
+            val message = "歌词加载中..."
+            val messageX = getTextXPosition(g2d, message)
+            // 使用阴影效果
+            if (useShadow) {
+                g2d.color = Color(0, 0, 0, 150)
+                g2d.drawString(message, messageX + 1, centerY + 1)
+            }
+            g2d.color = Color.LIGHT_GRAY
+            g2d.drawString(message, messageX, centerY)
         }
     }
 }
