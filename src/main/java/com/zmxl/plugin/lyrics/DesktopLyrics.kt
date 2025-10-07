@@ -919,12 +919,26 @@ object DesktopLyrics {
             } else {
                 null
             }
-            lyricsPanel.updateContent(
-                title = nowPlaying.title ?: "无歌曲播放",
-                artist = nowPlaying.artist ?: "",
-                position = nowPlaying.position,
-                lyric = lyricContent
-            )
+            
+            // 处理无歌词的情况
+            if (lyricContent == "NO_LYRIC") {
+                lyricsPanel.updateContent(
+                    title = nowPlaying.title ?: "无歌曲播放", 
+                    artist = nowPlaying.artist ?: "",
+                    position = nowPlaying.position,
+                    lyric = "" // 传递空字符串表示无歌词
+                )
+                lyricsPanel.setNoLyrics(true) // 标记为无歌词状态
+            } else {
+                lyricsPanel.updateContent(
+                    title = nowPlaying.title ?: "无歌曲播放",
+                    artist = nowPlaying.artist ?: "",
+                    position = nowPlaying.position,
+                    lyric = lyricContent
+                )
+                lyricsPanel.setNoLyrics(false) // 标记为有歌词状态
+            }
+            
             frame.isVisible = true
         } catch (e: Exception) {
             frame.isVisible = false
@@ -948,45 +962,80 @@ object DesktopLyrics {
     private fun getLyric(): String? {
         try {
             if (currentSongId.isNotEmpty() && lyricCache.containsKey(currentSongId)) {
-                return lyricCache[currentSongId]
+                val cachedLyric = lyricCache[currentSongId]
+                // 如果是空歌词标记，返回特定值表示无歌词
+                if (cachedLyric == "NO_LYRIC") {
+                    return "NO_LYRIC"
+                }
+                return cachedLyric
             }
+            
             val endpoints = listOf(
                 "/api/lyric",
-                "/api/lyricfile",
+                "/api/lyricfile", 
                 "/api/lyric163",
                 "/api/lyrickugou",
                 "/api/lyricqq"
             )
+            
+            var successCount = 0
+            var lastException: Exception? = null
+            
             for (endpoint in endpoints) {
                 try {
                     val url = URL("http://localhost:35373$endpoint")
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "GET"
                     conn.connectTimeout = 1000
+                    conn.readTimeout = 2000 // 添加读取超时
+                    
                     if (conn.responseCode == 404) {
                         conn.disconnect()
-                        continue
+                        successCount++
+                        continue // 404不算错误，只是没有歌词
                     }
+                    
                     if (conn.responseCode != 200) {
                         conn.disconnect()
                         continue
                     }
+                    
                     val reader = BufferedReader(InputStreamReader(conn.inputStream))
                     val response = reader.readText()
                     reader.close()
+                    
                     val lyricResponse = gson.fromJson(response, LyricResponse::class.java)
                     val lyric = lyricResponse.lyric
-                    if (lyric != null && currentSongId.isNotEmpty()) {
+                    
+                    if (lyric != null && lyric.isNotEmpty() && currentSongId.isNotEmpty()) {
                         lyricCache[currentSongId] = lyric
                         return lyric
                     }
+                    
                     conn.disconnect()
+                    successCount++ // 成功访问但无歌词
+                    
                 } catch (e: Exception) {
-                    continue
+                    lastException = e
+                    // 记录错误但不中断循环，继续尝试其他接口
+                    println("歌词接口 $endpoint 请求失败: ${e.message}")
                 }
             }
+            
+            // 所有接口都尝试过了
+            if (successCount == endpoints.size) {
+                // 所有接口都成功访问但没有歌词，缓存空结果
+                if (currentSongId.isNotEmpty()) {
+                    lyricCache[currentSongId] = "NO_LYRIC"
+                }
+                return "NO_LYRIC"
+            }
+            
+            // 如果有网络错误，返回null（不缓存，下次再尝试）
             return null
+            
         } catch (e: Exception) {
+            println("获取歌词过程发生异常: ${e.message}")
             return null
         }
     }
@@ -1454,9 +1503,19 @@ class LyricsPanel : JPanel() {
     private var currentWordProgress = 0f
     private var wordAnimationTimer: Timer? = null
     private var normalLyricProgress = 0f
+    // 添加无歌词状态标志
+    private var noLyrics = false
+    
     enum class Alignment {
         LEFT, CENTER, RIGHT
     }
+    
+    // 添加设置无歌词状态的方法
+    fun setNoLyrics(noLyrics: Boolean) {
+        this.noLyrics = noLyrics
+        repaint()
+    }
+    
     init {
         background = backgroundColor
         isOpaque = false
@@ -1539,6 +1598,7 @@ class LyricsPanel : JPanel() {
         currentLineIndex = -1
         nextLineIndex = -1
         lyric = ""
+        noLyrics = false // 重置无歌词状态
         smoothPosition = 0f
         targetPosition = 0f
         smoothAlpha = 0f
@@ -1739,9 +1799,28 @@ class LyricsPanel : JPanel() {
         val g2d = g as Graphics2D
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+        
         val centerY = height / 2
+        
+        // 处理无歌词情况
+        if (noLyrics) {
+            g2d.color = Color.LIGHT_GRAY
+            g2d.font = chineseFont
+            val message = "暂无歌词"
+            val messageX = getTextXPosition(g2d, message)
+            if (useShadow) {
+                g2d.color = Color(0, 0, 0, 150)
+                g2d.drawString(message, messageX + 1, centerY + 1)
+            }
+            g2d.color = Color.LIGHT_GRAY
+            g2d.drawString(message, messageX, centerY)
+            return
+        }
+        
+        // 原有的绘制逻辑...
         val currentLineY = centerY
         val nextLineY = centerY + 40
+        
         if (parsedLyrics.isNotEmpty()) {
             if (currentLineIndex in parsedLyrics.indices) {
                 val line = parsedLyrics[currentLineIndex]
@@ -1867,6 +1946,7 @@ class LyricsPanel : JPanel() {
                 }
             }
         } else {
+            // 只有当不是无歌词状态时才显示"歌词加载中..."
             g2d.color = Color.LIGHT_GRAY
             g2d.font = chineseFont
             val message = "歌词加载中..."
