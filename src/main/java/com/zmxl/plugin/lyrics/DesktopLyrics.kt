@@ -1503,14 +1503,12 @@ class LyricsPanel : JPanel() {
     private var currentWordProgress = 0f
     private var wordAnimationTimer: Timer? = null
     private var normalLyricProgress = 0f
-    // 添加无歌词状态标志
     private var noLyrics = false
     
     enum class Alignment {
         LEFT, CENTER, RIGHT
     }
     
-    // 添加设置无歌词状态的方法
     fun setNoLyrics(noLyrics: Boolean) {
         this.noLyrics = noLyrics
         repaint()
@@ -1585,20 +1583,29 @@ class LyricsPanel : JPanel() {
         englishFont = english
         repaint()
     }
-    private fun getFontForText(text: String): Font {
-        return when {
-            text.contains("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF]".toRegex()) -> {
-                if (text.contains("[\\u4E00-\\u9FFF]".toRegex())) chineseFont else japaneseFont
+	private fun getFontForText(text: String): Font {
+			val hasCJK = text.contains("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF\\uFF00-\\uFFEF]".toRegex())
+		val hasKorean = text.contains("[\\uAC00-\\uD7AF\\u1100-\\u11FF\\u3130-\\u318F]".toRegex())
+    
+    
+		return when {
+			hasCJK || hasKorean -> {
+            
+				if (text.contains("[\\u4E00-\\u9FFF]".toRegex()) || text.contains("[\\uFF00-\\uFFEF]".toRegex())) {
+					chineseFont
+				} else {
+					japaneseFont
             }
-            else -> englishFont
         }
+				else -> englishFont
     }
+}
     fun resetLyrics() {
         parsedLyrics = emptyList()
         currentLineIndex = -1
         nextLineIndex = -1
         lyric = ""
-        noLyrics = false // 重置无歌词状态
+        noLyrics = false 
         smoothPosition = 0f
         targetPosition = 0f
         smoothAlpha = 0f
@@ -1692,89 +1699,126 @@ class LyricsPanel : JPanel() {
         val startTime: Long,
         val endTime: Long
     )
-    private fun parseLyrics(lyricText: String?): List<LyricLine> {
-        if (lyricText.isNullOrEmpty()) return emptyList()
-        val lines = mutableListOf<LyricLine>()
-        val linePattern = Regex("\\[(\\d+):(\\d+)(?:\\.(\\d{1,3}))?\\]")
-        lyricText.split("\n").forEach { line ->
-            var currentLine = line.trim()
-            if (currentLine.isEmpty()) return@forEach
-            val timeMatches = linePattern.findAll(currentLine).toList()
-            if (timeMatches.isEmpty()) {
-                return@forEach
-            }
-            val timeStamps = timeMatches.map { match ->
-                val (min, sec, millis) = match.destructured
-                val minutes = min.toLong()
-                val seconds = sec.toLong()
-                val milliseconds = millis.toIntOrNull() ?: 0
-                minutes * 60 * 1000 + seconds * 1000 + milliseconds
-            }
-            val startTime = timeStamps.first()
-            var textStartIndex = timeMatches.first().range.last + 1
-            var text = currentLine.substring(textStartIndex)
-            val hasWordTimestamps = timeMatches.size > 1 ||
-                                  (textStartIndex < currentLine.length &&
-                                   currentLine.substring(textStartIndex).contains(Regex("<\\d+:\\d+(?:\\.\\d{1,3})?>|\\[\\d+:\\d+(?:\\.\\d{1,3})?\\]")))
-            val words = mutableListOf<Word>()
-            if (hasWordTimestamps) {
-                var lastTime = startTime
-                var lastIndex = 0
-                val wordPattern = Regex("""(?:<(\d+):(\d+)(?:\.(\d{1,3}))?>|\[(\d+):(\d+)(?:\.(\d{1,3}))?\])""")
-                val wordMatches = wordPattern.findAll(text).toList()
-                for (match in wordMatches) {
-                    val groups = match.groups
-                    val minStr = groups[1]?.value ?: groups[4]?.value ?: "0"
-                    val secStr = groups[2]?.value ?: groups[5]?.value ?: "0"
-                    val millisStr = groups[3]?.value ?: groups[6]?.value ?: "0"
-                    val minutes = minStr.toLong()
-                    val seconds = secStr.toLong()
-                    val milliseconds = millisStr.toIntOrNull() ?: 0
-                    val wordTime = minutes * 60 * 1000 + seconds * 1000 + milliseconds
-                    if (match.range.first > lastIndex) {
-                        val wordText = text.substring(lastIndex, match.range.first)
-                        if (wordText.isNotEmpty()) {
-                            words.add(Word(wordText, lastTime, wordTime))
-                        }
-                    }
-                    lastTime = wordTime
-                    lastIndex = match.range.last + 1
-                }
-                if (lastIndex < text.length) {
-                    val remainingText = text.substring(lastIndex)
-                    if (remainingText.isNotEmpty()) {
-                        words.add(Word(remainingText, lastTime, lastTime + 500))
-                    }
-                }
-            } else {
-                if (text.isNotEmpty()) {
-                    val characters = text.toCharArray().map { it.toString() }
-                    val charCount = characters.size
-                    val estimatedLineDuration = 5000L
-                    val charDuration = estimatedLineDuration / charCount
-                    for (i in characters.indices) {
-                        val charStartTime = startTime + i * charDuration
-                        val charEndTime = startTime + (i + 1) * charDuration
-                        words.add(Word(characters[i], charStartTime, charEndTime))
-                    }
-                }
-            }
-            lines.add(LyricLine(
-                time = startTime,
-                endTime = Long.MAX_VALUE,
-                text = text,
-                words = words
-            ))
+private fun parseLyrics(lyricText: String?): List<LyricLine> {
+    if (lyricText.isNullOrEmpty()) return emptyList()
+    val lines = mutableListOf<LyricLine>()
+    val linePattern = Regex("""\[(\d+):(\d+)(?:\.(\d{1,3}))?\]""")
+    
+    lyricText.split("\n").forEach { line ->
+        var currentLine = line.trim()
+        if (currentLine.isEmpty()) return@forEach
+        
+        
+        val timeMatches = linePattern.findAll(currentLine).toList()
+        if (timeMatches.isEmpty()) {
+            
+            return@forEach
         }
-        val sortedLines = lines.sortedBy { it.time }.toMutableList()
-        for (i in 0 until sortedLines.size - 1) {
-            sortedLines[i] = sortedLines[i].copy(endTime = sortedLines[i + 1].time)
+        
+        
+        val firstTimeMatch = timeMatches.first()
+        val startTime = firstTimeMatch.destructured.let { (min, sec, millis) ->
+            val minutes = min.toLong()
+            val seconds = sec.toLong()
+            val milliseconds = millis.toIntOrNull() ?: 0
+            minutes * 60 * 1000 + seconds * 1000 + milliseconds
         }
-        if (sortedLines.isNotEmpty()) {
-            sortedLines[sortedLines.size - 1] = sortedLines[sortedLines.size - 1].copy(endTime = Long.MAX_VALUE)
+        
+        
+        val textStartIndex = firstTimeMatch.range.last + 1
+        var text = if (textStartIndex < currentLine.length) {
+            currentLine.substring(textStartIndex).trim()
+        } else {
+            ""
         }
-        return sortedLines
+        
+        
+        
+        if (timeMatches.size > 1) {
+            
+            timeMatches.drop(1).forEach { match ->
+                text = text.replace(match.value, "")
+            }
+            text = text.trim()
+        }
+        
+        
+        val hasWordTimestamps = text.contains(Regex("""<\d+:\d+(?:\.\d{1,3})?>|\[\d+:\d+(?:\.\d{1,3})?\]"""))
+        
+        val words = mutableListOf<Word>()
+        
+        if (hasWordTimestamps) {
+            
+            var lastTime = startTime
+            var lastIndex = 0
+            val wordPattern = Regex("""(?:<(\d+):(\d+)(?:\.(\d{1,3}))?>|\[(\d+):(\d+)(?:\.(\d{1,3}))?\])""")
+            val wordMatches = wordPattern.findAll(text).toList()
+            
+            for (match in wordMatches) {
+                val groups = match.groups
+                val minStr = groups[1]?.value ?: groups[4]?.value ?: "0"
+                val secStr = groups[2]?.value ?: groups[5]?.value ?: "0"
+                val millisStr = groups[3]?.value ?: groups[6]?.value ?: "0"
+                
+                val minutes = minStr.toLong()
+                val seconds = secStr.toLong()
+                val milliseconds = millisStr.toIntOrNull() ?: 0
+                val wordTime = minutes * 60 * 1000 + seconds * 1000 + milliseconds
+                
+                if (match.range.first > lastIndex) {
+                    val wordText = text.substring(lastIndex, match.range.first)
+                    if (wordText.isNotEmpty()) {
+                        words.add(Word(wordText, lastTime, wordTime))
+                    }
+                }
+                lastTime = wordTime
+                lastIndex = match.range.last + 1
+            }
+            
+            if (lastIndex < text.length) {
+                val remainingText = text.substring(lastIndex)
+                if (remainingText.isNotEmpty()) {
+                    words.add(Word(remainingText, lastTime, lastTime + 500))
+                }
+            }
+            
+            
+            text = wordPattern.replace(text, "").trim()
+        } else {
+            
+            if (text.isNotEmpty()) {
+                val characters = text.toCharArray().map { it.toString() }
+                val charCount = characters.size
+                val estimatedLineDuration = 5000L
+                val charDuration = estimatedLineDuration / charCount.coerceAtLeast(1)
+                
+                for (i in characters.indices) {
+                    val charStartTime = startTime + i * charDuration
+                    val charEndTime = startTime + (i + 1) * charDuration
+                    words.add(Word(characters[i], charStartTime, charEndTime))
+                }
+            }
+        }
+        
+        lines.add(LyricLine(
+            time = startTime,
+            endTime = Long.MAX_VALUE,
+            text = text,
+            words = words
+        ))
     }
+    
+    
+    val sortedLines = lines.sortedBy { it.time }.toMutableList()
+    for (i in 0 until sortedLines.size - 1) {
+        sortedLines[i] = sortedLines[i].copy(endTime = sortedLines[i + 1].time)
+    }
+    if (sortedLines.isNotEmpty()) {
+        sortedLines[sortedLines.size - 1] = sortedLines[sortedLines.size - 1].copy(endTime = Long.MAX_VALUE)
+    }
+    
+    return sortedLines
+}
     private fun findCurrentLyricLine(): Int {
         if (parsedLyrics.isEmpty()) return -1
         for (i in parsedLyrics.indices.reversed()) {
@@ -1802,7 +1846,7 @@ class LyricsPanel : JPanel() {
         
         val centerY = height / 2
         
-        // 处理无歌词情况
+        
         if (noLyrics) {
             g2d.color = Color.LIGHT_GRAY
             g2d.font = chineseFont
@@ -1817,7 +1861,7 @@ class LyricsPanel : JPanel() {
             return
         }
         
-        // 原有的绘制逻辑...
+
         val currentLineY = centerY
         val nextLineY = centerY + 40
         
@@ -1946,7 +1990,6 @@ class LyricsPanel : JPanel() {
                 }
             }
         } else {
-            // 只有当不是无歌词状态时才显示"歌词加载中..."
             g2d.color = Color.LIGHT_GRAY
             g2d.font = chineseFont
             val message = "歌词加载中..."
