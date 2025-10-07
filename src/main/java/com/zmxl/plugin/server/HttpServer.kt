@@ -345,170 +345,319 @@ class HttpServer(private val port: Int) {
         }
     }
 
-    /**
-     * 歌词API - JAudioTagger
-     */
-    class LyricFileServlet : HttpServlet() {
-        private val gson = Gson()
+/**
+ * 歌词API - JAudioTagger (专门优化USLT帧提取)
+ */
+class LyricFileServlet : HttpServlet() {
+    private val gson = Gson()
 
-        @Throws(IOException::class)
-        override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
-            resp.contentType = "application/json;charset=UTF-8"
+    @Throws(IOException::class)
+    override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
+        resp.contentType = "application/json;charset=UTF-8"
 
+        val currentMedia = PlaybackStateHolder.currentMedia
+        if (currentMedia == null || currentMedia.path.isNullOrBlank()) {
+            resp.status = HttpServletResponse.SC_BAD_REQUEST
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "没有当前播放媒体或媒体路径为空"
+            )))
+            return
+        }
 
-            val currentMedia = PlaybackStateHolder.currentMedia
-            if (currentMedia == null || currentMedia.path.isNullOrBlank()) {
-                resp.status = HttpServletResponse.SC_BAD_REQUEST
+        val filePath = currentMedia.path
+        println("使用当前播放媒体路径: $filePath")
+
+        try {
+            val file = File(filePath)
+            if (!file.exists() || !file.isFile) {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "没有当前播放媒体或媒体路径为空"
+                    "message" to "文件不存在: $filePath"
                 )))
                 return
             }
 
-            val filePath = currentMedia.path
-            println("使用当前播放媒体路径: $filePath")
-
-            try {
-                val file = File(filePath)
-                if (!file.exists() || !file.isFile) {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "文件不存在: $filePath"
-                    )))
-                    return
-                }
-
-                // 检查文件扩展名
-                val extension = file.extension.lowercase()
-                val supportedFormats = listOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "opus")
-                if (!supportedFormats.contains(extension)) {
-                    resp.status = HttpServletResponse.SC_BAD_REQUEST
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "不支持的音频文件格式: $extension. 支持格式: ${supportedFormats.joinToString()}"
-                    )))
-                    return
-                }
-
-                // 使用JAudioTagger提取歌词
-                val lyrics = extractLyricsFromFile(file)
-
-                if (lyrics.isNotBlank()) {
-                    val response = mapOf(
-                        "status" to "success",
-                        "lyric" to lyrics,
-                        "source" to "file_metadata",
-                        "file" to filePath,
-                        "format" to extension
-                    )
-                    resp.writer.write(gson.toJson(response))
-                } else {
-                    resp.status = HttpServletResponse.SC_NOT_FOUND
-                    resp.writer.write(gson.toJson(mapOf(
-                        "status" to "error",
-                        "message" to "文件中未找到歌词元数据",
-                        "file" to filePath,
-                        "format" to extension
-                    )))
-                }
-            } catch (e: Exception) {
-                resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+            // 检查文件扩展名
+            val extension = file.extension.lowercase()
+            val supportedFormats = listOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "opus")
+            if (!supportedFormats.contains(extension)) {
+                resp.status = HttpServletResponse.SC_BAD_REQUEST
                 resp.writer.write(gson.toJson(mapOf(
                     "status" to "error",
-                    "message" to "提取文件歌词失败: ${e.message}"
+                    "message" to "不支持的音频文件格式: $extension. 支持格式: ${supportedFormats.joinToString()}"
                 )))
-                e.printStackTrace()
-            }
-        }
-
-        /**
-         * 使用JAudioTagger从音频文件中提取歌词
-         */
-        private fun extractLyricsFromFile(file: File): String {
-            try {
-                val audioFile = AudioFileIO.read(file)
-                val tag = audioFile.tag
-
-                if (tag == null) {
-                    println("文件没有标签信息: ${file.name}")
-                    return ""
-                }
-
-                // 尝试从不同字段中查找歌词
-                return findLyricsInTag(tag, file.extension)
-            } catch (e: Exception) {
-                println("使用JAudioTagger读取文件失败: ${e.message}")
-                return ""
-            }
-        }
-
-        /**
-         * 在标签中查找歌词
-         */
-        private fun findLyricsInTag(tag: Tag, fileExtension: String): String {
-            // 尝试常见的歌词字段
-            val lyricFields = listOf(
-                FieldKey.LYRICS,
-                FieldKey.LYRICIST,
-                FieldKey.COMMENT
-            )
-
-            // 尝试所有可能的歌词字段
-            for (field in lyricFields) {
-                try {
-                    if (tag.hasField(field.name)) {
-                        val value = tag.getFirst(field)
-                        if (value.isNotBlank()) {
-                            println("找到歌词字段: $field = $value")
-                            return value
-                        }
-                    }
-                } catch (e: Exception) {
-                    println("读取字段 $field 失败: ${e.message}")
-                }
+                return
             }
 
-            // 对于MP3文件，尝试查找所有可能的ID3歌词帧
-            if (fileExtension.equals("mp3", ignoreCase = true)) {
-                return extractAllID3Lyrics(tag)
+            // 使用JAudioTagger提取歌词
+            val lyrics = extractLyricsFromFile(file)
+
+            if (lyrics.isNotBlank()) {
+                val response = mapOf(
+                    "status" to "success",
+                    "lyric" to lyrics,
+                    "source" to "file_metadata",
+                    "file" to filePath,
+                    "format" to extension
+                )
+                resp.writer.write(gson.toJson(response))
+            } else {
+                resp.status = HttpServletResponse.SC_NOT_FOUND
+                resp.writer.write(gson.toJson(mapOf(
+                    "status" to "error",
+                    "message" to "文件中未找到歌词元数据",
+                    "file" to filePath,
+                    "format" to extension
+                )))
             }
-
-            return ""
-        }
-
-        /**
-         * 从所有ID3标签中提取歌词
-         */
-        private fun extractAllID3Lyrics(tag: Tag): String {
-            val lyricsBuilder = StringBuilder()
-
-            // 尝试获取所有字段
-            try {
-                for (fieldKey in FieldKey.values()) {
-                    try {
-                        if (tag.hasField(fieldKey.name) &&
-                            (fieldKey.toString().contains("LYRIC", ignoreCase = true) ||
-                                    fieldKey.toString().contains("COMMENT", ignoreCase = true))) {
-                            val value = tag.getFirst(fieldKey)
-                            if (value.isNotBlank()) {
-                                lyricsBuilder.append(value).append("\n")
-                                println("找到ID3歌词字段: $fieldKey = $value")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        // 忽略无法读取的字段
-                    }
-                }
-            } catch (e: Exception) {
-                println("提取ID3歌词失败: ${e.message}")
-            }
-
-            return lyricsBuilder.toString().trim()
+        } catch (e: Exception) {
+            resp.status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+            resp.writer.write(gson.toJson(mapOf(
+                "status" to "error",
+                "message" to "提取文件歌词失败: ${e.message}"
+            )))
+            e.printStackTrace()
         }
     }
 
+    /**
+     * 使用JAudioTagger从音频文件中提取歌词
+     */
+    private fun extractLyricsFromFile(file: File): String {
+        try {
+            val audioFile = AudioFileIO.read(file)
+            val tag = audioFile.tag
+
+            if (tag == null) {
+                println("文件没有标签信息: ${file.name}")
+                return ""
+            }
+
+            // 首先专门尝试提取USLT帧
+            val usltLyrics = extractUSLTFrameDirectly(tag)
+            if (usltLyrics.isNotBlank()) {
+                println("成功从USLT帧提取歌词")
+                return usltLyrics
+            }
+
+            // 如果USLT没有找到，尝试其他常规字段
+            return findLyricsInStandardFields(tag, file.extension)
+        } catch (e: Exception) {
+            println("使用JAudioTagger读取文件失败: ${e.message}")
+            return ""
+        }
+    }
+
+    /**
+     * 直接提取USLT帧内容
+     */
+    private fun extractUSLTFrameDirectly(tag: Tag): String {
+        try {
+            // 方法1: 使用JAudioTagger的ID3v2特定方法
+            if (tag.toString().contains("ID3v2")) {
+                return extractFromID3v2Tag(tag)
+            }
+
+            // 方法2: 通过字段迭代查找
+            return extractUSLTByFieldIteration(tag)
+        } catch (e: Exception) {
+            println("直接提取USLT帧失败: ${e.message}")
+            return ""
+        }
+    }
+
+    /**
+     * 从ID3v2标签提取USLT
+     */
+    private fun extractFromID3v2Tag(tag: Tag): String {
+        try {
+            // 使用反射访问ID3v2Tag的内部方法
+            val tagClass = tag.javaClass
+            
+            // 尝试获取getFirstField方法
+            val getFirstFieldMethod = tagClass.methods.find { 
+                it.name == "getFirstField" && it.parameterCount == 1 
+            }
+            
+            if (getFirstFieldMethod != null) {
+                // 尝试不同的USLT标识符
+                val usltIdentifiers = listOf("USLT", "UNSYNCED LYRICS", "UNSYNCED_LYRICS", "ULT")
+                
+                for (identifier in usltIdentifiers) {
+                    try {
+                        val field = getFirstFieldMethod.invoke(tag, identifier)
+                        if (field != null) {
+                            val fieldString = field.toString()
+                            println("找到USLT字段 [$identifier]: $fieldString")
+                            
+                            // 尝试提取实际歌词内容
+                            val lyricContent = extractLyricContentFromField(field)
+                            if (lyricContent.isNotBlank()) {
+                                return lyricContent
+                            }
+                            
+                            // 如果无法提取内容，返回整个字段字符串
+                            return fieldString
+                        }
+                    } catch (e: Exception) {
+                        // 继续尝试下一个标识符
+                        println("尝试标识符 '$identifier' 失败: ${e.message}")
+                    }
+                }
+            }
+            
+            // 尝试getFields方法获取所有USLT字段
+            val getFieldsMethod = tagClass.methods.find { 
+                it.name == "getFields" && it.parameterCount == 1 
+            }
+            
+            if (getFieldsMethod != null) {
+                val fields = getFieldsMethod.invoke(tag, "USLT") as? List<*>
+                if (fields != null && fields.isNotEmpty()) {
+                    val lyricsBuilder = StringBuilder()
+                    for (field in fields) {
+                        if (field != null) {
+                            val content = extractLyricContentFromField(field)
+                            if (content.isNotBlank()) {
+                                lyricsBuilder.append(content).append("\n")
+                            } else {
+                                lyricsBuilder.append(field.toString()).append("\n")
+                            }
+                        }
+                    }
+                    val result = lyricsBuilder.toString().trim()
+                    if (result.isNotBlank()) {
+                        return result
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            println("从ID3v2标签提取USLT失败: ${e.message}")
+        }
+        
+        return ""
+    }
+
+    /**
+     * 从字段对象中提取歌词内容
+     */
+    private fun extractLyricContentFromField(field: Any): String {
+        try {
+            // 尝试调用getContent方法
+            val getContentMethod = field.javaClass.methods.find { it.name == "getContent" }
+            if (getContentMethod != null) {
+                val content = getContentMethod.invoke(field) as? String
+                if (!content.isNullOrBlank()) {
+                    return content
+                }
+            }
+            
+            // 尝试调用toString并清理
+            val fieldString = field.toString()
+            return cleanUSLTContent(fieldString)
+        } catch (e: Exception) {
+            println("提取字段内容失败: ${e.message}")
+            return ""
+        }
+    }
+
+    /**
+     * 清理USLT内容，移除框架标识符
+     */
+    private fun cleanUSLTContent(rawContent: String): String {
+        var content = rawContent
+        
+        // 移除常见的框架标识符前缀
+        val prefixes = listOf(
+            "USLT:",
+            "USLT=",
+            "Unsynchronised lyric:",
+            "Unsynchronized lyric:",
+            "Unsynchronized lyric/text transcription:"
+        )
+        
+        prefixes.forEach { prefix ->
+            if (content.startsWith(prefix, ignoreCase = true)) {
+                content = content.substring(prefix.length).trim()
+            }
+        }
+        
+        // 移除语言代码和描述（如果存在）
+        // USLT帧格式通常为: [语言][描述]\0[歌词]
+        if (content.length >= 5 && content.substring(3, 5) == "\u0000") {
+            content = content.substring(5)
+        }
+        
+        return content.trim()
+    }
+
+    /**
+     * 通过字段迭代查找USLT
+     */
+    private fun extractUSLTByFieldIteration(tag: Tag): String {
+        val lyricsBuilder = StringBuilder()
+        
+        try {
+            // 获取所有字段
+            val fieldsMethod = tag.javaClass.methods.find { it.name == "getFields" }
+            if (fieldsMethod != null) {
+                val fields = fieldsMethod.invoke(tag) as? List<*>
+                fields?.forEach { field ->
+                    if (field != null) {
+                        val fieldString = field.toString()
+                        // 查找包含USLT的字段
+                        if (fieldString.contains("USLT", ignoreCase = true) || 
+                            fieldString.contains("UNSYNCED", ignoreCase = true)) {
+                            
+                            println("找到可能的歌词字段: $fieldString")
+                            val content = extractLyricContentFromField(field)
+                            if (content.isNotBlank()) {
+                                lyricsBuilder.append(content).append("\n")
+                            } else {
+                                lyricsBuilder.append(fieldString).append("\n")
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            println("字段迭代查找USLT失败: ${e.message}")
+        }
+        
+        return lyricsBuilder.toString().trim()
+    }
+
+    /**
+     * 在标准字段中查找歌词
+     */
+    private fun findLyricsInStandardFields(tag: Tag, fileExtension: String): String {
+        // 尝试常见的歌词字段
+        val lyricFields = listOf(
+            FieldKey.LYRICS,
+            FieldKey.LYRICIST,
+            FieldKey.COMMENT
+        )
+
+        // 尝试所有可能的歌词字段
+        for (field in lyricFields) {
+            try {
+                if (tag.hasField(field)) {
+                    val value = tag.getFirst(field)
+                    if (value.isNotBlank()) {
+                        println("找到标准歌词字段: $field = $value")
+                        return value
+                    }
+                }
+            } catch (e: Exception) {
+                println("读取字段 $field 失败: ${e.message}")
+            }
+        }
+
+        return ""
+    }
+}
     /**
      * 网易云音乐网络歌词API
      */
