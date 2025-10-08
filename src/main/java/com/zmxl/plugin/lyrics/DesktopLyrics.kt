@@ -68,7 +68,7 @@ object DesktopLyrics {
     private var currentArtist = ""
     private var backgroundAlpha = 0f
     private val backgroundTimer = Timer(16) {
-        val targetAlpha = if (frame.mousePosition != null && !isLocked) 0.9f else 0f
+        val targetAlpha = if (frame.mousePosition != null && !isLocked && !isManuallyHidden) 0.9f else 0f
         backgroundAlpha += (targetAlpha - backgroundAlpha) * 0.15f
         if (backgroundAlpha < 0.01f) {
             disableAcrylicEffect()
@@ -592,6 +592,7 @@ object DesktopLyrics {
                 }
                 minimizeButton = createControlButton("−").apply {
                     addActionListener {
+                        isManuallyHidden = true
                         frame.isVisible = false
                         try {
                             if (SystemTray.isSupported()) {
@@ -606,9 +607,8 @@ object DesktopLyrics {
                                 }
                             }
                         } catch (e: Exception) {
+                            println("显示托盘消息失败: ${e.message}")
                         }
-                        isManuallyHidden = true
-                        Timer(1000) { isManuallyHidden = false }.start()
                     }
                 }
                 add(lockButton)
@@ -741,128 +741,119 @@ object DesktopLyrics {
             }
         }.start()
     }
-    private fun setupSystemTray() {
-        if (!SystemTray.isSupported()) return
-        val tray = SystemTray.getSystemTray()
-        val image = createTrayIconImage()
-        val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
-        val menuWindow = JWindow().apply {
-            isAlwaysOnTop = true
-            background = Color(0, 0, 0, 0)
-            focusableWindowState = false
-        }
-        val menuPanel = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            background = Color(60, 60, 60, 230)
-            border = BorderFactory.createEmptyBorder(5, 5, 5, 5)
-        }
-        val toggleItem = createMenuItem("显示/隐藏") {
-            frame.isVisible = !frame.isVisible
-            menuWindow.isVisible = false
-            if (frame.isVisible) {
-                frame.toFront()
-                if (!isLocked && frame.mousePosition != null) {
-                    topPanel.isVisible = true
-                }
-            }
-        }
-        menuPanel.add(toggleItem)
-        val lockItem = createMenuItem(if (isLocked) "解锁" else "锁定") {
-            toggleLock()
-            menuWindow.isVisible = false
-        }
-        menuPanel.add(lockItem)
-        val settingsItem = createMenuItem("设置") {
-            showSettingsDialog()
-            menuWindow.isVisible = false
-        }
-        menuPanel.add(settingsItem)
-        menuPanel.add(JSeparator().apply {
-            foreground = Color(120, 120, 120)
-            maximumSize = Dimension(Int.MAX_VALUE, 1)
-        })
-        val exitItem = createMenuItem("退出") {
-            exitApplication()
-            menuWindow.isVisible = false
-        }
-        menuPanel.add(exitItem)
-        menuWindow.contentPane = menuPanel
-        menuWindow.pack()
-        val globalMouseListener = object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent) {
-                if (menuWindow.isVisible) {
-                    val mousePoint = e.locationOnScreen
-                    val menuBounds = Rectangle(menuWindow.location, menuWindow.size)
-                    if (!menuBounds.contains(mousePoint)) {
-                        menuWindow.isVisible = false
-                    }
-                }
-            }
-        }
-        val globalKeyListener = object : KeyAdapter() {
-            override fun keyPressed(e: KeyEvent) {
-                if (e.keyCode == KeyEvent.VK_ESCAPE && menuWindow.isVisible) {
+private fun setupSystemTray() {
+    if (!SystemTray.isSupported()) return
+    val tray = SystemTray.getSystemTray()
+    val image = createTrayIconImage()
+    val trayIcon = TrayIcon(image, "Salt Player 桌面歌词")
+    val menuWindow = JWindow().apply {
+        isAlwaysOnTop = true
+        background = Color(0, 0, 0, 0)
+        focusableWindowState = false
+    }
+    val menuPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        background = Color(60, 60, 60, 230)
+        border = BorderFactory.createEmptyBorder(5, 5, 5, 5)
+    }
+    
+    val lockItem = createMenuItem(if (isLocked) "解锁" else "锁定") {
+        toggleLock()
+        menuWindow.isVisible = false
+    }
+    menuPanel.add(lockItem)
+    val settingsItem = createMenuItem("设置") {
+        showSettingsDialog()
+        menuWindow.isVisible = false
+    }
+    menuPanel.add(settingsItem)
+    menuPanel.add(JSeparator().apply {
+        foreground = Color(120, 120, 120)
+        maximumSize = Dimension(Int.MAX_VALUE, 1)
+    })
+    val exitItem = createMenuItem("退出") {
+        exitApplication()
+        menuWindow.isVisible = false
+    }
+    menuPanel.add(exitItem)
+    menuWindow.contentPane = menuPanel
+    menuWindow.pack()
+    val globalMouseListener = object : MouseAdapter() {
+        override fun mousePressed(e: MouseEvent) {
+            if (menuWindow.isVisible) {
+                val mousePoint = e.locationOnScreen
+                val menuBounds = Rectangle(menuWindow.location, menuWindow.size)
+                if (!menuBounds.contains(mousePoint)) {
                     menuWindow.isVisible = false
                 }
             }
         }
-        fun addGlobalListeners() {
-            Window.getWindows().forEach { window ->
-                if (window.isVisible) {
-                    window.addMouseListener(globalMouseListener)
-                    window.addKeyListener(globalKeyListener)
-                }
-            }
-        }
-        fun removeGlobalListeners() {
-            Window.getWindows().forEach { window ->
-                window.removeMouseListener(globalMouseListener)
-                window.removeKeyListener(globalKeyListener)
-            }
-        }
-        trayIcon.addMouseListener(object : MouseAdapter() {
-            override fun mouseReleased(e: MouseEvent) {
-                if (e.isPopupTrigger) {
-                    (lockItem as JButton).text = if (isLocked) "解锁" else "锁定"
-                    val mousePos = MouseInfo.getPointerInfo().location
-                    menuWindow.setLocation(
-                        mousePos.x - menuWindow.width / 2,
-                        mousePos.y - menuWindow.height
-                    )
-                    menuWindow.isVisible = true
-                    addGlobalListeners()
-                }
-            }
-        })
-        menuWindow.addWindowListener(object : WindowAdapter() {
-            override fun windowDeactivated(e: WindowEvent) {
-                menuWindow.isVisible = false
-                removeGlobalListeners()
-            }
-            override fun windowClosed(e: WindowEvent) {
-                removeGlobalListeners()
-            }
-        })
-        trayIcon.addActionListener {
-            frame.isVisible = !frame.isVisible
-            if (frame.isVisible) {
-                frame.toFront()
-                if (!isLocked && frame.mousePosition != null) {
-                    topPanel.isVisible = true
-                }
-            }
-        }
-        try {
-            tray.add(trayIcon)
-        } catch (e: AWTException) {
-        }
-        frame.addWindowListener(object : WindowAdapter() {
-            override fun windowClosed(e: WindowEvent) {
-                removeGlobalListeners()
-                menuWindow.dispose()
-            }
-        })
     }
+    val globalKeyListener = object : KeyAdapter() {
+        override fun keyPressed(e: KeyEvent) {
+            if (e.keyCode == KeyEvent.VK_ESCAPE && menuWindow.isVisible) {
+                menuWindow.isVisible = false
+            }
+        }
+    }
+    fun addGlobalListeners() {
+        Window.getWindows().forEach { window ->
+            if (window.isVisible) {
+                window.addMouseListener(globalMouseListener)
+                window.addKeyListener(globalKeyListener)
+            }
+        }
+    }
+    fun removeGlobalListeners() {
+        Window.getWindows().forEach { window ->
+            window.removeMouseListener(globalMouseListener)
+            window.removeKeyListener(globalKeyListener)
+        }
+    }
+    trayIcon.addMouseListener(object : MouseAdapter() {
+        override fun mouseReleased(e: MouseEvent) {
+            if (e.isPopupTrigger) {
+                (lockItem as JButton).text = if (isLocked) "解锁" else "锁定"
+                val mousePos = MouseInfo.getPointerInfo().location
+                menuWindow.setLocation(
+                    mousePos.x - menuWindow.width / 2,
+                    mousePos.y - menuWindow.height
+                )
+                menuWindow.isVisible = true
+                addGlobalListeners()
+            }
+        }
+    })
+    menuWindow.addWindowListener(object : WindowAdapter() {
+        override fun windowDeactivated(e: WindowEvent) {
+            menuWindow.isVisible = false
+            removeGlobalListeners()
+        }
+        override fun windowClosed(e: WindowEvent) {
+            removeGlobalListeners()
+        }
+    })
+    trayIcon.addActionListener {
+        isManuallyHidden = false
+        frame.isVisible = !frame.isVisible
+        if (frame.isVisible) {
+            frame.toFront()
+            if (!isLocked && frame.mousePosition != null) {
+                topPanel.isVisible = true
+            }
+        }
+    }
+    try {
+        tray.add(trayIcon)
+    } catch (e: AWTException) {
+    }
+    frame.addWindowListener(object : WindowAdapter() {
+        override fun windowClosed(e: WindowEvent) {
+            removeGlobalListeners()
+            menuWindow.dispose()
+        }
+    })
+}
     private fun createMenuItem(text: String, action: () -> Unit): JButton {
         return JButton(text).apply {
             font = Font("微软雅黑", Font.PLAIN, 12)
