@@ -12,6 +12,10 @@
 ```
 gradlew plugin
 ```
+## 其他插件:
+[任务栏歌词插件](https://github.com/zmxlsss666/TaskbarLyricsPlugin)
+
+[播放进度保存插件](https://github.com/zmxlsss666/SaltTimePlugin)
 ## 软件截图
 ### 桌面歌词
 #### 未锁定：
