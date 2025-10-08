@@ -135,17 +135,13 @@ object DesktopLyrics {
         configHelper = manager.getConfig("desktop_lyrics_config.json")
         configChangeListener = Consumer { helper ->
             if (isInitialized) {
-                println("检测到配置更改，重新加载配置...")
                 loadConfig()
                 applyConfig()
-                println("配置已更新并应用")
             }
         }
         try {
             configManager.addConfigChangeListener("desktop_lyrics_config.json", configChangeListener!!)
-            println("配置更改监听器已注册")
         } catch (e: Exception) {
-            println("注册配置更改监听器失败: ${e.message}")
         }
     }
     fun start() {
@@ -158,15 +154,12 @@ object DesktopLyrics {
         timer.start()
         backgroundTimer.start()
         isInitialized = true
-        println("桌面歌词已启动")
     }
     fun stop() {
         isInitialized = false
         configChangeListener?.let {
             try {
-                println("尝试移除配置监听器...")
             } catch (e: Exception) {
-                println("移除配置监听器失败: ${e.message}")
             }
         }
         saveConfig()
@@ -175,7 +168,6 @@ object DesktopLyrics {
         scrollTimer?.stop()
         disableAcrylicEffect()
         frame.dispose()
-        println("桌面歌词已停止")
     }
     private fun loadConfig() {
         try {
@@ -198,15 +190,12 @@ object DesktopLyrics {
                 appConfig.animationSpeed = configHelper.get("animationSpeed", appConfig.animationSpeed)
                 appConfig.alignment = configHelper.get("alignment", appConfig.alignment)
                 appConfig.useShadow = configHelper.get("useShadow", appConfig.useShadow)
-                println("从ConfigManager加载配置成功")
             } else if (configFile.exists()) {
                 val json = configFile.readText()
                 appConfig = gson.fromJson(json, AppConfig::class.java)
-                println("从文件加载配置成功")
             }
             applyConfig()
         } catch (e: Exception) {
-            println("加载配置文件失败: ${e.message}")
         }
     }
     private fun applyConfig() {
@@ -238,7 +227,6 @@ object DesktopLyrics {
         if (::lockButton.isInitialized) {
             lockButton.text = if (isLocked) "🔒" else "🔓"
         }
-        println("配置已应用到UI")
     }
     private fun saveConfig() {
         try {
@@ -284,16 +272,13 @@ object DesktopLyrics {
                 configHelper.set("alignment", appConfig.alignment)
                 configHelper.set("useShadow", appConfig.useShadow)
                 if (configHelper.save()) {
-                    println("配置已保存到ConfigManager")
                 } else {
-                    println("保存配置到ConfigManager失败")
                     saveConfigLegacy()
                 }
             } else {
                 saveConfigLegacy()
             }
         } catch (e: Exception) {
-            println("保存配置文件失败: ${e.message}")
             saveConfigLegacy()
         }
     }
@@ -303,10 +288,8 @@ object DesktopLyrics {
                 val json = configFile.readText()
                 appConfig = gson.fromJson(json, AppConfig::class.java)
                 applyConfig()
-                println("从旧式配置文件加载配置成功")
             }
         } catch (e: Exception) {
-            println("加载旧式配置文件失败: ${e.message}")
         }
     }
     private fun saveConfigLegacy() {
@@ -316,9 +299,7 @@ object DesktopLyrics {
             }
             val json = gson.toJson(appConfig)
             configFile.writeText(json)
-            println("配置已保存到文件")
         } catch (e: Exception) {
-            println("保存旧式配置文件失败: ${e.message}")
         }
     }
     private fun enableAcrylicEffect(alpha: Int) {
@@ -342,7 +323,6 @@ object DesktopLyrics {
             data.SizeOfData = accent.size()
             User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
         } catch (e: Exception) {
-            println("启用毛玻璃效果失败: ${e.message}")
             frame.background = Color(
                 0, 0, 0, (alpha / 255f * 180).roundToInt()
             )
@@ -367,7 +347,6 @@ object DesktopLyrics {
             data.SizeOfData = accent.size()
             User32Ex.INSTANCE.SetWindowCompositionAttribute(hwnd, data)
         } catch (e: Exception) {
-            println("禁用毛玻璃效果失败: ${e.message}")
             frame.background = Color(0, 0, 0, 0)
         }
     }
@@ -613,7 +592,6 @@ object DesktopLyrics {
                                 }
                             }
                         } catch (e: Exception) {
-                            println("显示托盘消息失败: ${e.message}")
                         }
                         isManuallyHidden = true
                         Timer(1000) { isManuallyHidden = false }.start()
@@ -746,7 +724,6 @@ object DesktopLyrics {
                 conn.connectTimeout = 1000
                 conn.responseCode
             } catch (e: Exception) {
-                println("发送媒体命令失败: ${e.message}")
             }
         }.start()
     }
@@ -864,7 +841,6 @@ object DesktopLyrics {
         try {
             tray.add(trayIcon)
         } catch (e: AWTException) {
-            println("无法添加系统托盘图标: ${e.message}")
         }
         frame.addWindowListener(object : WindowAdapter() {
             override fun windowClosed(e: WindowEvent) {
@@ -919,16 +895,14 @@ object DesktopLyrics {
             } else {
                 null
             }
-            
-            // 处理无歌词的情况
             if (lyricContent == "NO_LYRIC") {
                 lyricsPanel.updateContent(
-                    title = nowPlaying.title ?: "无歌曲播放", 
+                    title = nowPlaying.title ?: "无歌曲播放",
                     artist = nowPlaying.artist ?: "",
                     position = nowPlaying.position,
-                    lyric = "" // 传递空字符串表示无歌词
+                    lyric = ""
                 )
-                lyricsPanel.setNoLyrics(true) // 标记为无歌词状态
+                lyricsPanel.setNoLyrics(true)
             } else {
                 lyricsPanel.updateContent(
                     title = nowPlaying.title ?: "无歌曲播放",
@@ -936,9 +910,8 @@ object DesktopLyrics {
                     position = nowPlaying.position,
                     lyric = lyricContent
                 )
-                lyricsPanel.setNoLyrics(false) // 标记为有歌词状态
+                lyricsPanel.setNoLyrics(false)
             }
-            
             frame.isVisible = true
         } catch (e: Exception) {
             frame.isVisible = false
@@ -963,79 +936,59 @@ object DesktopLyrics {
         try {
             if (currentSongId.isNotEmpty() && lyricCache.containsKey(currentSongId)) {
                 val cachedLyric = lyricCache[currentSongId]
-                // 如果是空歌词标记，返回特定值表示无歌词
                 if (cachedLyric == "NO_LYRIC") {
                     return "NO_LYRIC"
                 }
                 return cachedLyric
             }
-            
             val endpoints = listOf(
                 "/api/lyric",
-                "/api/lyricfile", 
+                "/api/lyricfile",
                 "/api/lyric163",
                 "/api/lyrickugou",
                 "/api/lyricqq"
             )
-            
             var successCount = 0
             var lastException: Exception? = null
-            
             for (endpoint in endpoints) {
                 try {
                     val url = URL("http://localhost:35373$endpoint")
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "GET"
                     conn.connectTimeout = 1000
-                    conn.readTimeout = 2000 // 添加读取超时
-                    
+                    conn.readTimeout = 2000
                     if (conn.responseCode == 404) {
                         conn.disconnect()
                         successCount++
-                        continue // 404不算错误，只是没有歌词
+                        continue
                     }
-                    
                     if (conn.responseCode != 200) {
                         conn.disconnect()
                         continue
                     }
-                    
                     val reader = BufferedReader(InputStreamReader(conn.inputStream))
                     val response = reader.readText()
                     reader.close()
-                    
                     val lyricResponse = gson.fromJson(response, LyricResponse::class.java)
                     val lyric = lyricResponse.lyric
-                    
                     if (lyric != null && lyric.isNotEmpty() && currentSongId.isNotEmpty()) {
                         lyricCache[currentSongId] = lyric
                         return lyric
                     }
-                    
                     conn.disconnect()
-                    successCount++ // 成功访问但无歌词
-                    
+                    successCount++
                 } catch (e: Exception) {
                     lastException = e
-                    // 记录错误但不中断循环，继续尝试其他接口
-                    println("歌词接口 $endpoint 请求失败: ${e.message}")
                 }
             }
-            
-            // 所有接口都尝试过了
             if (successCount == endpoints.size) {
-                // 所有接口都成功访问但没有歌词，缓存空结果
                 if (currentSongId.isNotEmpty()) {
                     lyricCache[currentSongId] = "NO_LYRIC"
                 }
                 return "NO_LYRIC"
             }
-            
-            // 如果有网络错误，返回null（不缓存，下次再尝试）
             return null
-            
         } catch (e: Exception) {
-            println("获取歌词过程发生异常: ${e.message}")
             return null
         }
     }
@@ -1044,7 +997,6 @@ object DesktopLyrics {
     }
     fun showSettingsDialog() {
         if (!isInitialized) {
-            println("桌面歌词未初始化，无法打开设置")
             return
         }
         settingsDialog?.dispose()
@@ -1504,16 +1456,13 @@ class LyricsPanel : JPanel() {
     private var wordAnimationTimer: Timer? = null
     private var normalLyricProgress = 0f
     private var noLyrics = false
-    
     enum class Alignment {
         LEFT, CENTER, RIGHT
     }
-    
     fun setNoLyrics(noLyrics: Boolean) {
         this.noLyrics = noLyrics
         repaint()
     }
-    
     init {
         background = backgroundColor
         isOpaque = false
@@ -1586,11 +1535,8 @@ class LyricsPanel : JPanel() {
 	private fun getFontForText(text: String): Font {
 			val hasCJK = text.contains("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF\\uFF00-\\uFFEF]".toRegex())
 		val hasKorean = text.contains("[\\uAC00-\\uD7AF\\u1100-\\u11FF\\u3130-\\u318F]".toRegex())
-    
-    
 		return when {
 			hasCJK || hasKorean -> {
-            
 				if (text.contains("[\\u4E00-\\u9FFF]".toRegex()) || text.contains("[\\uFF00-\\uFFEF]".toRegex())) {
 					chineseFont
 				} else {
@@ -1605,7 +1551,7 @@ class LyricsPanel : JPanel() {
         currentLineIndex = -1
         nextLineIndex = -1
         lyric = ""
-        noLyrics = false 
+        noLyrics = false
         smoothPosition = 0f
         targetPosition = 0f
         smoothAlpha = 0f
@@ -1692,6 +1638,7 @@ class LyricsPanel : JPanel() {
         val time: Long,
         val endTime: Long,
         val text: String,
+        val translation: String = "",
         val words: List<Word>
     )
     data class Word(
@@ -1703,19 +1650,19 @@ private fun parseLyrics(lyricText: String?): List<LyricLine> {
     if (lyricText.isNullOrEmpty()) return emptyList()
     val lines = mutableListOf<LyricLine>()
     val linePattern = Regex("""\[(\d+):(\d+)(?:\.(\d{1,3}))?\]""")
-    
-    lyricText.split("\n").forEach { line ->
-        var currentLine = line.trim()
-        if (currentLine.isEmpty()) return@forEach
-        
-        
+    val rawLines = lyricText.split("\n")
+    var i = 0
+    while (i < rawLines.size) {
+        var currentLine = rawLines[i].trim()
+        if (currentLine.isEmpty()) {
+            i++
+            continue
+        }
         val timeMatches = linePattern.findAll(currentLine).toList()
         if (timeMatches.isEmpty()) {
-            
-            return@forEach
+            i++
+            continue
         }
-        
-        
         val firstTimeMatch = timeMatches.first()
         val startTime = firstTimeMatch.destructured.let { (min, sec, millis) ->
             val minutes = min.toLong()
@@ -1723,48 +1670,59 @@ private fun parseLyrics(lyricText: String?): List<LyricLine> {
             val milliseconds = millis.toIntOrNull() ?: 0
             minutes * 60 * 1000 + seconds * 1000 + milliseconds
         }
-        
-        
         val textStartIndex = firstTimeMatch.range.last + 1
         var text = if (textStartIndex < currentLine.length) {
             currentLine.substring(textStartIndex).trim()
         } else {
             ""
         }
-        
-        
-        
-        if (timeMatches.size > 1) {
-            
-            timeMatches.drop(1).forEach { match ->
-                text = text.replace(match.value, "")
-            }
-            text = text.trim()
+        timeMatches.drop(1).forEach { match ->
+            text = text.replace(match.value, "")
         }
-        
-        
+        text = text.trim()
+        var translationText = ""
+        if (i + 1 < rawLines.size) {
+            val nextLine = rawLines[i + 1].trim()
+            val nextTimeMatches = linePattern.findAll(nextLine).toList()
+            if (nextTimeMatches.isNotEmpty()) {
+                val nextFirstTimeMatch = nextTimeMatches.first()
+                val nextStartTime = nextFirstTimeMatch.destructured.let { (min, sec, millis) ->
+                    val minutes = min.toLong()
+                    val seconds = sec.toLong()
+                    val milliseconds = millis.toIntOrNull() ?: 0
+                    minutes * 60 * 1000 + seconds * 1000 + milliseconds
+                }
+                if (nextStartTime == startTime) {
+                    val translationStartIndex = nextFirstTimeMatch.range.last + 1
+                    translationText = if (translationStartIndex < nextLine.length) {
+                        nextLine.substring(translationStartIndex).trim()
+                    } else {
+                        ""
+                    }
+                    nextTimeMatches.drop(1).forEach { match ->
+                        translationText = translationText.replace(match.value, "")
+                    }
+                    translationText = translationText.trim()
+                    i++
+                }
+            }
+        }
         val hasWordTimestamps = text.contains(Regex("""<\d+:\d+(?:\.\d{1,3})?>|\[\d+:\d+(?:\.\d{1,3})?\]"""))
-        
         val words = mutableListOf<Word>()
-        
         if (hasWordTimestamps) {
-            
             var lastTime = startTime
             var lastIndex = 0
             val wordPattern = Regex("""(?:<(\d+):(\d+)(?:\.(\d{1,3}))?>|\[(\d+):(\d+)(?:\.(\d{1,3}))?\])""")
             val wordMatches = wordPattern.findAll(text).toList()
-            
             for (match in wordMatches) {
                 val groups = match.groups
                 val minStr = groups[1]?.value ?: groups[4]?.value ?: "0"
                 val secStr = groups[2]?.value ?: groups[5]?.value ?: "0"
                 val millisStr = groups[3]?.value ?: groups[6]?.value ?: "0"
-                
                 val minutes = minStr.toLong()
                 val seconds = secStr.toLong()
                 val milliseconds = millisStr.toIntOrNull() ?: 0
                 val wordTime = minutes * 60 * 1000 + seconds * 1000 + milliseconds
-                
                 if (match.range.first > lastIndex) {
                     val wordText = text.substring(lastIndex, match.range.first)
                     if (wordText.isNotEmpty()) {
@@ -1774,24 +1732,19 @@ private fun parseLyrics(lyricText: String?): List<LyricLine> {
                 lastTime = wordTime
                 lastIndex = match.range.last + 1
             }
-            
             if (lastIndex < text.length) {
                 val remainingText = text.substring(lastIndex)
                 if (remainingText.isNotEmpty()) {
                     words.add(Word(remainingText, lastTime, lastTime + 500))
                 }
             }
-            
-            
             text = wordPattern.replace(text, "").trim()
         } else {
-            
             if (text.isNotEmpty()) {
                 val characters = text.toCharArray().map { it.toString() }
                 val charCount = characters.size
                 val estimatedLineDuration = 5000L
                 val charDuration = estimatedLineDuration / charCount.coerceAtLeast(1)
-                
                 for (i in characters.indices) {
                     val charStartTime = startTime + i * charDuration
                     val charEndTime = startTime + (i + 1) * charDuration
@@ -1799,16 +1752,15 @@ private fun parseLyrics(lyricText: String?): List<LyricLine> {
                 }
             }
         }
-        
         lines.add(LyricLine(
             time = startTime,
             endTime = Long.MAX_VALUE,
             text = text,
+            translation = translationText,
             words = words
         ))
+        i++
     }
-    
-    
     val sortedLines = lines.sortedBy { it.time }.toMutableList()
     for (i in 0 until sortedLines.size - 1) {
         sortedLines[i] = sortedLines[i].copy(endTime = sortedLines[i + 1].time)
@@ -1816,7 +1768,6 @@ private fun parseLyrics(lyricText: String?): List<LyricLine> {
     if (sortedLines.isNotEmpty()) {
         sortedLines[sortedLines.size - 1] = sortedLines[sortedLines.size - 1].copy(endTime = Long.MAX_VALUE)
     }
-    
     return sortedLines
 }
     private fun findCurrentLyricLine(): Int {
@@ -1838,15 +1789,115 @@ private fun parseLyrics(lyricText: String?): List<LyricLine> {
             else -> (width - getTextWidth(g, text)) / 2
         }
     }
+    private fun drawLyricLine(g2d: Graphics2D, line: LyricLine, text: String, y: Int, isOriginal: Boolean) {
+        val font = getFontForText(text)
+        g2d.font = font
+        var currentX = when (alignment) {
+            Alignment.LEFT -> 20
+            Alignment.RIGHT -> width - 20
+            else -> width / 2
+        }
+        var totalWidth = 0
+        if (isOriginal && line.words.isNotEmpty()) {
+            line.words.forEach { word ->
+                totalWidth += getTextWidth(g2d, word.text)
+            }
+            if (alignment == Alignment.CENTER) {
+                currentX -= totalWidth / 2
+            }
+            var x = currentX
+            for (i in line.words.indices) {
+                val word = line.words[i]
+                val wordWidth = getTextWidth(g2d, word.text)
+                val isCurrentWord = i == currentWordIndex
+                val highlightProgress = if (isCurrentWord) currentWordProgress else {
+                    if (i < currentWordIndex) 1f else 0f
+                }
+                if (useShadow) {
+                    g2d.color = Color(0, 0, 0, 150)
+                    g2d.drawString(word.text, (x + 1).toInt(), y + 1)
+                }
+                if (highlightProgress <= 0) {
+                    g2d.color = if (isOriginal) lyricColor else Color(lyricColor.red, lyricColor.green, lyricColor.blue, 180)
+                    g2d.drawString(word.text, x.toInt(), y)
+                } else {
+                    val highlightedWidth = (wordWidth * highlightProgress).toInt()
+                    g2d.color = highlightColor
+                    g2d.drawString(word.text, x.toInt(), y)
+                    if (highlightProgress < 1f) {
+                        g2d.color = if (isOriginal) lyricColor else Color(lyricColor.red, lyricColor.green, lyricColor.blue, 180)
+                        g2d.clipRect((x + highlightedWidth).toInt(), 0, wordWidth - highlightedWidth, height)
+                        g2d.drawString(word.text, x.toInt(), y)
+                        g2d.clip = null
+                    }
+                }
+                x += wordWidth
+            }
+        } else {
+            val textWidth = getTextWidth(g2d, text)
+            val x = getTextXPosition(g2d, text)
+            if (useShadow) {
+                g2d.color = Color(0, 0, 0, 150)
+                g2d.drawString(text, x + 1, y + 1)
+            }
+            g2d.color = if (isOriginal) lyricColor else Color(lyricColor.red, lyricColor.green, lyricColor.blue, 180)
+            g2d.drawString(text, x, y)
+            if (isOriginal && line.words.isEmpty()) {
+                val highlightWidth = (textWidth * normalLyricProgress).toInt()
+                if (highlightWidth > 0) {
+                    g2d.color = highlightColor
+                    val clip = g2d.clip
+                    g2d.clipRect(x, 0, highlightWidth, height)
+                    g2d.drawString(text, x, y)
+                    g2d.clip = clip
+                }
+            }
+        }
+    }
+    private fun drawNextLyricLine(g2d: Graphics2D, line: LyricLine, text: String, y: Int) {
+        g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
+        g2d.font = getFontForText(text)
+        var x = when (alignment) {
+            Alignment.LEFT -> 20
+            Alignment.RIGHT -> width - 20
+            else -> width / 2
+        }
+        if (line.words.isNotEmpty()) {
+            var totalWidth = 0
+            line.words.forEach { word ->
+                totalWidth += getTextWidth(g2d, word.text)
+            }
+            if (alignment == Alignment.CENTER) {
+                x -= totalWidth / 2
+            }
+            var currentX = x
+            line.words.forEach { word ->
+                val wordWidth = getTextWidth(g2d, word.text)
+                if (useShadow) {
+                    g2d.color = Color(0, 0, 0, 75)
+                    g2d.drawString(word.text, (currentX + 1).toInt(), y + 1)
+                }
+                g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
+                g2d.drawString(word.text, currentX.toInt(), y)
+                currentX += wordWidth
+            }
+        } else {
+            val textWidth = getTextWidth(g2d, text)
+            val textX = getTextXPosition(g2d, text)
+            if (useShadow) {
+                g2d.color = Color(0, 0, 0, 75)
+                g2d.drawString(text, textX + 1, y + 1)
+            }
+            g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
+            g2d.drawString(text, textX, y)
+        }
+    }
     override fun paintComponent(g: Graphics) {
         super.paintComponent(g)
         val g2d = g as Graphics2D
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-        
         val centerY = height / 2
-        
-        
         if (noLyrics) {
             g2d.color = Color.LIGHT_GRAY
             g2d.font = chineseFont
@@ -1860,101 +1911,30 @@ private fun parseLyrics(lyricText: String?): List<LyricLine> {
             g2d.drawString(message, messageX, centerY)
             return
         }
-        
-
-        val currentLineY = centerY
-        val nextLineY = centerY + 40
-        
         if (parsedLyrics.isNotEmpty()) {
             if (currentLineIndex in parsedLyrics.indices) {
                 val line = parsedLyrics[currentLineIndex]
-                val font = getFontForText(line.text)
-                g2d.font = font
-                var currentX = when (alignment) {
-                    Alignment.LEFT -> 20
-                    Alignment.RIGHT -> width - 20
-                    else -> width / 2
-                }
-                var totalWidth = 0
-                line.words.forEach { word ->
-                    totalWidth += getTextWidth(g2d, word.text)
-                }
-                if (alignment == Alignment.CENTER) {
-                    currentX -= totalWidth / 2
-                }
-                var x = currentX
-                for (i in line.words.indices) {
-                    val word = line.words[i]
-                    val wordWidth = getTextWidth(g2d, word.text)
-                    val isCurrentWord = i == currentWordIndex
-                    val highlightProgress = if (isCurrentWord) currentWordProgress else {
-                        if (i < currentWordIndex) 1f else 0f
-                    }
+                val hasTranslationForCurrentLine = line.translation.isNotEmpty()
+                if (hasTranslationForCurrentLine) {
+                    val originalY = centerY - 20
+                    val translationY = centerY + 20
+                    drawLyricLine(g2d, line, line.text, originalY, true)
+                    g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 180)
+                    g2d.font = getFontForText(line.translation)
+                    val translationX = getTextXPosition(g2d, line.translation)
                     if (useShadow) {
-                        g2d.color = Color(0, 0, 0, 150)
-                        g2d.drawString(word.text, (x + 1).toInt(), currentLineY + 1)
+                        g2d.color = Color(0, 0, 0, 75)
+                        g2d.drawString(line.translation, translationX + 1, translationY + 1)
                     }
-                    if (highlightProgress <= 0) {
-                        g2d.color = lyricColor
-                        g2d.drawString(word.text, x.toInt(), currentLineY)
-                    } else {
-                        val highlightedWidth = (wordWidth * highlightProgress).toInt()
-                        g2d.color = highlightColor
-                        g2d.drawString(word.text, x.toInt(), currentLineY)
-                        if (highlightProgress < 1f) {
-                            g2d.color = lyricColor
-                            g2d.clipRect((x + highlightedWidth).toInt(), 0, wordWidth - highlightedWidth, height)
-                            g2d.drawString(word.text, x.toInt(), currentLineY)
-                            g2d.clip = null
-                        }
-                    }
-                    x += wordWidth
-                }
-                if (line.words.isEmpty()) {
-                    val text = line.text
-                    val textWidth = getTextWidth(g2d, text)
-                    val x = getTextXPosition(g2d, text)
-                    if (useShadow) {
-                        g2d.color = Color(0, 0, 0, 150)
-                        g2d.drawString(text, x + 1, currentLineY + 1)
-                    }
-                    g2d.color = lyricColor
-                    g2d.drawString(text, x, currentLineY)
-                    val highlightWidth = (textWidth * normalLyricProgress).toInt()
-                    if (highlightWidth > 0) {
-                        g2d.color = highlightColor
-                        val clip = g2d.clip
-                        g2d.clipRect(x, 0, highlightWidth, height)
-                        g2d.drawString(text, x, currentLineY)
-                        g2d.clip = clip
-                    }
-                }
-                if (currentLineIndex < parsedLyrics.size - 1) {
-                    val nextLine = parsedLyrics[currentLineIndex + 1]
-                    g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
-                    g2d.font = getFontForText(nextLine.text)
-                    var nextX = when (alignment) {
-                        Alignment.LEFT -> 20
-                        Alignment.RIGHT -> width - 20
-                        else -> width / 2
-                    }
-                    var nextTotalWidth = 0
-                    nextLine.words.forEach { word ->
-                        nextTotalWidth += getTextWidth(g2d, word.text)
-                    }
-                    if (alignment == Alignment.CENTER) {
-                        nextX -= nextTotalWidth / 2
-                    }
-                    var nextXPos = nextX
-                    nextLine.words.forEach { word ->
-                        val wordWidth = getTextWidth(g2d, word.text)
-                        if (useShadow) {
-                            g2d.color = Color(0, 0, 0, 75)
-                            g2d.drawString(word.text, (nextXPos + 1).toInt(), nextLineY + 1)
-                        }
-                        g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 150)
-                        g2d.drawString(word.text, nextXPos.toInt(), nextLineY)
-                        nextXPos += wordWidth
+                    g2d.color = Color(lyricColor.red, lyricColor.green, lyricColor.blue, 180)
+                    g2d.drawString(line.translation, translationX, translationY)
+                } else {
+                    val currentLineY = centerY - 20
+                    val nextLineY = centerY + 20
+                    drawLyricLine(g2d, line, line.text, currentLineY, true)
+                    if (currentLineIndex < parsedLyrics.size - 1) {
+                        val nextLine = parsedLyrics[currentLineIndex + 1]
+                        drawNextLyricLine(g2d, nextLine, nextLine.text, nextLineY)
                     }
                 }
             }
