@@ -350,6 +350,7 @@ object DesktopLyrics {
             frame.background = Color(0, 0, 0, 0)
         }
     }
+    private var resizeDirection: Int = Cursor.DEFAULT_CURSOR
     private fun setupUI() {
         frame.apply {
             title = "Salt Player 桌面歌词"
@@ -373,6 +374,7 @@ object DesktopLyrics {
                         if (cursorType != Cursor.DEFAULT_CURSOR) {
                             isResizing = true
                             resizeStart = e.point
+                            resizeDirection = cursorType
                             frame.cursor = Cursor.getPredefinedCursor(cursorType)
                         } else {
                             isDragging = true
@@ -386,6 +388,7 @@ object DesktopLyrics {
                         val wasDraggingOrResizing = isDragging || isResizing
                         isDragging = false
                         isResizing = false
+                        resizeDirection = Cursor.DEFAULT_CURSOR
                         frame.cursor = Cursor.getDefaultCursor()
                         if (wasDraggingOrResizing) {
                             saveConfig()
@@ -429,39 +432,50 @@ object DesktopLyrics {
                         if (isResizing && resizeStart != null) {
                             val dx = e.x - resizeStart!!.x
                             val dy = e.y - resizeStart!!.y
-                            val cursorType = getCursorType(e.point)
-                            val newWidth = maxOf(frame.width + (if (cursorType == Cursor.E_RESIZE_CURSOR || cursorType == Cursor.SE_RESIZE_CURSOR || cursorType == Cursor.NE_RESIZE_CURSOR) dx else 0), 300)
-                            val newHeight = maxOf(frame.height + (if (cursorType == Cursor.S_RESIZE_CURSOR || cursorType == Cursor.SE_RESIZE_CURSOR || cursorType == Cursor.SW_RESIZE_CURSOR) dy else 0), 100)
-                            when (cursorType) {
+                            val minWidth = 300
+                            val minHeight = 100
+                            when (resizeDirection) {
                                 Cursor.N_RESIZE_CURSOR -> {
-                                    val newY = frame.y + dy
-                                    setBounds(frame.x, newY, frame.width, newHeight)
+                                    val newY = location.y + dy
+                                    val newHeight = maxOf(height - dy, minHeight)
+                                    setBounds(location.x, newY, width, newHeight)
                                 }
                                 Cursor.S_RESIZE_CURSOR -> {
-                                    setSize(frame.width, newHeight)
+                                    val newHeight = maxOf(height + dy, minHeight)
+                                    setSize(width, newHeight)
                                 }
                                 Cursor.E_RESIZE_CURSOR -> {
-                                    setSize(newWidth, frame.height)
+                                    val newWidth = maxOf(width + dx, minWidth)
+                                    setSize(newWidth, height)
                                 }
                                 Cursor.W_RESIZE_CURSOR -> {
-                                    val newX = frame.x + dx
-                                    setBounds(newX, frame.y, newWidth, frame.height)
+                                    val newX = location.x + dx
+                                    val newWidth = maxOf(width - dx, minWidth)
+                                    setBounds(newX, location.y, newWidth, height)
                                 }
                                 Cursor.NE_RESIZE_CURSOR -> {
-                                    val newY = frame.y + dy
-                                    setBounds(frame.x, newY, newWidth, newHeight)
+                                    val newY = location.y + dy
+                                    val newHeight = maxOf(height - dy, minHeight)
+                                    val newWidth = maxOf(width + dx, minWidth)
+                                    setBounds(location.x, newY, newWidth, newHeight)
                                 }
                                 Cursor.NW_RESIZE_CURSOR -> {
-                                    val newX = frame.x + dx
-                                    val newY = frame.y + dy
+                                    val newX = location.x + dx
+                                    val newY = location.y + dy
+                                    val newWidth = maxOf(width - dx, minWidth)
+                                    val newHeight = maxOf(height - dy, minHeight)
                                     setBounds(newX, newY, newWidth, newHeight)
                                 }
                                 Cursor.SE_RESIZE_CURSOR -> {
+                                    val newWidth = maxOf(width + dx, minWidth)
+                                    val newHeight = maxOf(height + dy, minHeight)
                                     setSize(newWidth, newHeight)
                                 }
                                 Cursor.SW_RESIZE_CURSOR -> {
-                                    val newX = frame.x + dx
-                                    setBounds(newX, frame.y, newWidth, newHeight)
+                                    val newX = location.x + dx
+                                    val newWidth = maxOf(width - dx, minWidth)
+                                    val newHeight = maxOf(height + dy, minHeight)
+                                    setBounds(newX, location.y, newWidth, newHeight)
                                 }
                             }
                             resizeStart = e.point
