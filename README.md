@@ -1,4 +1,5 @@
-# 因SPW1.8.0已实现完整桌面歌词，本插件结束使命，现已停止更新
+# 因SPW1.8.0已实现完整桌面歌词，本插件结束使命，现已停止更新。
+   如果有问题可以提Issues
 # SaltLyricPlugin
 一个适用于 Salt Player For Windows 的桌面歌词插件，提供桌面歌词显示及 HTTP API 控制功能。
 ## 功能特点
